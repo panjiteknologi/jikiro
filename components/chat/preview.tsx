@@ -1,8 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { suggestions } from "@/lib/constants";
-import { SparklesIcon } from "./icons";
+import Jikiro from '@/public/svg/jikiro';
+import { useRouter } from "next/navigation";
 
 export function Preview() {
   const router = useRouter();
@@ -15,10 +15,10 @@ export function Preview() {
   return (
     <div className="flex h-full flex-col overflow-hidden rounded-tl-2xl bg-background">
       <div className="flex h-14 shrink-0 items-center gap-3 border-b border-border/20 px-5">
-        <div className="flex size-5 items-center justify-center rounded bg-muted/60 ring-1 ring-border/50">
-          <SparklesIcon size={10} />
+        <div className="flex size-5 items-center justify-center">
+          <Jikiro />
         </div>
-        <span className="text-[13px] text-muted-foreground">Chatbot</span>
+        <span className="text-[13px] text-muted-foreground">Jikiro Bot</span>
       </div>
 
       <div className="flex flex-1 flex-col items-center justify-center gap-8 px-8">
