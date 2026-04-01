@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/app/(auth)/auth";
 import {
   decodeStorageKey,
+  deleteFileFromS3,
   getChatUploadPrefix,
   getFileFromS3,
 } from "@/lib/storage/s3";
@@ -79,4 +80,51 @@ export async function GET(
       { status: 500 }
     );
   }
+}
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ key: string }> }
+) {
+  const session = await auth();
+
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  let storageKey: string;
+
+  try {
+    const resolvedParams = await params;
+    storageKey = decodeStorageKey(resolvedParams.key);
+  } catch {
+    return NextResponse.json({ error: "Invalid file key" }, { status: 400 });
+  }
+
+  if (!storageKey.startsWith(getChatUploadPrefix(session.user.id))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  try {
+    await deleteFileFromS3(storageKey);
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "$metadata" in error &&
+      typeof error.$metadata === "object" &&
+      error.$metadata !== null &&
+      "httpStatusCode" in error.$metadata &&
+      error.$metadata.httpStatusCode === 404
+    ) {
+      return Response.json({ ok: true }, { status: 200 });
+    }
+
+    return NextResponse.json(
+      { error: "Failed to delete file" },
+      { status: 500 }
+    );
+  }
+
+  return Response.json({ ok: true }, { status: 200 });
 }

@@ -316,6 +316,31 @@ function PureMultimodalInput({
     [setAttachments, uploadFile]
   );
 
+  const removeAttachment = useCallback(
+    async (attachmentToRemove: Attachment) => {
+      setAttachments((currentAttachments) =>
+        currentAttachments.filter((a) => a.url !== attachmentToRemove.url)
+      );
+
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+
+      try {
+        const response = await fetch(attachmentToRemove.url, {
+          method: "DELETE",
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to delete attachment");
+        }
+      } catch (_error) {
+        toast.error("Attachment removed locally, but failed to delete from storage.");
+      }
+    },
+    [setAttachments]
+  );
+
   const handlePaste = useCallback(
     async (event: ClipboardEvent) => {
       const items = event.clipboardData?.items;
@@ -453,12 +478,7 @@ function PureMultimodalInput({
                 attachment={attachment}
                 key={attachment.url}
                 onRemove={() => {
-                  setAttachments((currentAttachments) =>
-                    currentAttachments.filter((a) => a.url !== attachment.url)
-                  );
-                  if (fileInputRef.current) {
-                    fileInputRef.current.value = "";
-                  }
+                  void removeAttachment(attachment);
                 }}
               />
             ))}

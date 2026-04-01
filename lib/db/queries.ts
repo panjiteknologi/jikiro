@@ -153,6 +153,22 @@ export async function deleteChatById({ id }: { id: string }) {
   }
 }
 
+export async function getChatIdsByUserId({ userId }: { userId: string }) {
+  try {
+    const rows = await db
+      .select({ id: chat.id })
+      .from(chat)
+      .where(eq(chat.userId, userId));
+
+    return rows.map((row) => row.id);
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to get chat ids by user id"
+    );
+  }
+}
+
 export async function deleteAllChatsByUserId({ userId }: { userId: string }) {
   try {
     const userChats = await db
@@ -306,6 +322,25 @@ export async function getMessagesByChatId({ id }: { id: string }) {
     throw new ChatbotError(
       "bad_request:database",
       "Failed to get messages by chat id"
+    );
+  }
+}
+
+export async function getMessagesByChatIds({ ids }: { ids: string[] }) {
+  try {
+    if (ids.length === 0) {
+      return [];
+    }
+
+    return await db
+      .select()
+      .from(message)
+      .where(inArray(message.chatId, ids))
+      .orderBy(asc(message.createdAt));
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to get messages by chat ids"
     );
   }
 }

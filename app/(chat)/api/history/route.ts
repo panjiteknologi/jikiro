@@ -1,7 +1,16 @@
 import type { NextRequest } from "next/server";
 import { auth } from "@/app/(auth)/auth";
-import { deleteAllChatsByUserId, getChatsByUserId } from "@/lib/db/queries";
+import {
+  deleteAllChatsByUserId,
+  getChatIdsByUserId,
+  getChatsByUserId,
+  getMessagesByChatIds,
+} from "@/lib/db/queries";
 import { ChatbotError } from "@/lib/errors";
+import {
+  deleteFilesFromS3BestEffort,
+  extractUniqueStorageKeysFromMessages,
+} from "@/lib/storage/s3";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -41,6 +50,25 @@ export async function DELETE() {
 
   if (!session?.user) {
     return new ChatbotError("unauthorized:chat").toResponse();
+  }
+
+  const chatIds = await getChatIdsByUserId({ userId: session.user.id });
+
+  if (chatIds.length > 0) {
+    const messages = await getMessagesByChatIds({ ids: chatIds });
+    const storageKeys = extractUniqueStorageKeysFromMessages({
+      messages,
+      userId: session.user.id,
+    });
+
+    await deleteFilesFromS3BestEffort({
+      keys: storageKeys,
+      context: {
+        userId: session.user.id,
+        operation: "delete-all-chats",
+        chatCount: chatIds.length,
+      },
+    });
   }
 
   const result = await deleteAllChatsByUserId({ userId: session.user.id });

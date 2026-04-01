@@ -45,6 +45,10 @@ import {
 import type { DBMessage } from "@/lib/db/schema";
 import { ChatbotError } from "@/lib/errors";
 import { checkIpRateLimit } from "@/lib/ratelimit";
+import {
+  deleteFilesFromS3BestEffort,
+  extractUniqueStorageKeysFromMessages,
+} from "@/lib/storage/s3";
 import type { ChatMessage } from "@/lib/types";
 import { convertToUIMessages, generateUUID } from "@/lib/utils";
 import { generateTitleFromUserMessage } from "../../actions";
@@ -407,6 +411,21 @@ export async function DELETE(request: Request) {
   if (chat?.userId !== session.user.id) {
     return new ChatbotError("forbidden:chat").toResponse();
   }
+
+  const messages = await getMessagesByChatId({ id });
+  const storageKeys = extractUniqueStorageKeysFromMessages({
+    messages,
+    userId: session.user.id,
+  });
+
+  await deleteFilesFromS3BestEffort({
+    keys: storageKeys,
+    context: {
+      chatId: id,
+      userId: session.user.id,
+      operation: "delete-chat",
+    },
+  });
 
   const deletedChat = await deleteChatById({ id });
 

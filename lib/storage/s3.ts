@@ -1,8 +1,10 @@
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import type { DBMessage } from "@/lib/db/schema";
 
 type S3Env = {
   endpoint: string;
@@ -180,4 +182,98 @@ export async function getFileDataUrlFromS3(key: string) {
   const contentType = object.ContentType ?? "application/octet-stream";
 
   return `data:${contentType};base64,${Buffer.from(body).toString("base64")}`;
+}
+
+export async function deleteFileFromS3(key: string) {
+  await getS3Client().send(
+    new DeleteObjectCommand({
+      Bucket: getS3Bucket(),
+      Key: key,
+    })
+  );
+}
+
+function getStorageKeyFromPartUrl(
+  part: unknown,
+  userId?: string
+): string | null {
+  if (typeof part !== "object" || part === null) {
+    return null;
+  }
+
+  const type = "type" in part ? part.type : undefined;
+  const url = "url" in part ? part.url : undefined;
+
+  if (type !== "file" || typeof url !== "string") {
+    return null;
+  }
+
+  const storageKey = extractStorageKeyFromFileUrl(url);
+
+  if (!storageKey) {
+    return null;
+  }
+
+  if (userId && !storageKey.startsWith(getChatUploadPrefix(userId))) {
+    return null;
+  }
+
+  return storageKey;
+}
+
+export function extractUniqueStorageKeysFromMessages({
+  messages,
+  userId,
+}: {
+  messages: Pick<DBMessage, "parts">[];
+  userId?: string;
+}) {
+  const keys = new Set<string>();
+
+  for (const message of messages) {
+    if (!Array.isArray(message.parts)) {
+      continue;
+    }
+
+    for (const part of message.parts) {
+      const storageKey = getStorageKeyFromPartUrl(part, userId);
+
+      if (storageKey) {
+        keys.add(storageKey);
+      }
+    }
+  }
+
+  return [...keys];
+}
+
+export async function deleteFilesFromS3BestEffort({
+  keys,
+  context,
+}: {
+  keys: string[];
+  context: Record<string, unknown>;
+}) {
+  if (keys.length === 0) {
+    return;
+  }
+
+  const results = await Promise.allSettled(
+    keys.map(async (key) => {
+      await deleteFileFromS3(key);
+      return key;
+    })
+  );
+
+  const failedKeys = results.flatMap((result, index) =>
+    result.status === "rejected" ? [keys[index]] : []
+  );
+
+  if (failedKeys.length > 0) {
+    console.error("Failed to delete one or more S3 attachment files", {
+      ...context,
+      attemptedKeyCount: keys.length,
+      failedKeys,
+    });
+  }
 }
