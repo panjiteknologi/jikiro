@@ -63,7 +63,7 @@ export async function deleteTrailingMessages({ id }: { id: string }) {
 
 export async function updateChatVisibility({
   chatId,
-  visibility,
+  visibility: _visibility,
 }: {
   chatId: string;
   visibility: VisibilityType;
@@ -78,5 +78,5 @@ export async function updateChatVisibility({
     throw new Error("Unauthorized");
   }
 
-  await updateChatVisibilityById({ chatId, visibility });
+  await updateChatVisibilityById({ chatId, visibility: "private" });
 }

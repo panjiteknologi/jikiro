@@ -25,19 +25,14 @@ export async function GET(request: Request) {
     });
   }
 
-  if (
-    chat.visibility === "private" &&
-    (!session?.user || session.user.id !== chat.userId)
-  ) {
+  if (!session?.user || session.user.id !== chat.userId) {
     return Response.json({ error: "forbidden" }, { status: 403 });
   }
 
-  const isReadonly = !session?.user || session.user.id !== chat.userId;
-
   return Response.json({
     messages: convertToUIMessages(messages),
-    visibility: chat.visibility,
+    visibility: "private",
     userId: chat.userId,
-    isReadonly,
+    isReadonly: false,
   });
 }

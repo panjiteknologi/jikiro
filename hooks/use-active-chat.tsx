@@ -93,9 +93,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
   const initialMessages: ChatMessage[] = isNewChat
     ? []
     : (chatData?.messages ?? []);
-  const visibility: VisibilityType = isNewChat
-    ? "private"
-    : (chatData?.visibility ?? "private");
+  const visibility: VisibilityType = "private";
 
   const {
     messages,
@@ -145,7 +143,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
               ? { messages: request.messages }
               : { message: lastMessage }),
             selectedChatModel: currentModelIdRef.current,
-            selectedVisibilityType: visibility,
+            selectedVisibilityType: "private",
             ...request.body,
           },
         };
