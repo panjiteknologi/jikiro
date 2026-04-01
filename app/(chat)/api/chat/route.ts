@@ -20,6 +20,11 @@ import {
 } from "@/lib/ai/models";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
 import { getLanguageModel } from "@/lib/ai/providers";
+import {
+  extractStorageKeyFromFileUrl,
+  getChatUploadPrefix,
+  getFileDataUrlFromS3,
+} from "@/lib/storage/s3";
 import { createDocument } from "@/lib/ai/tools/create-document";
 import { editDocument } from "@/lib/ai/tools/edit-document";
 import { getWeather } from "@/lib/ai/tools/get-weather";
@@ -56,6 +61,44 @@ function getStreamContext() {
 }
 
 export { getStreamContext };
+
+async function resolvePrivateFilePartsForModel({
+  messages,
+  userId,
+}: {
+  messages: ChatMessage[];
+  userId: string;
+}) {
+  return Promise.all(
+    messages.map(async (message) => ({
+      ...message,
+      parts: await Promise.all(
+        message.parts.map(async (part) => {
+          if (part.type !== "file") {
+            return part;
+          }
+
+          const storageKey = extractStorageKeyFromFileUrl(part.url);
+
+          if (!storageKey) {
+            return part;
+          }
+
+          if (!storageKey.startsWith(getChatUploadPrefix(userId))) {
+            throw new ChatbotError("forbidden:chat");
+          }
+
+          const dataUrl = await getFileDataUrlFromS3(storageKey);
+
+          return {
+            ...part,
+            url: dataUrl,
+          };
+        })
+      ),
+    }))
+  );
+}
 
 export async function POST(request: Request) {
   let requestBody: PostRequestBody;
@@ -185,7 +228,11 @@ export async function POST(request: Request) {
     const isReasoningModel = capabilities?.reasoning === true;
     const supportsTools = capabilities?.tools === true;
 
-    const modelMessages = await convertToModelMessages(uiMessages);
+    const modelReadyMessages = await resolvePrivateFilePartsForModel({
+      messages: uiMessages,
+      userId: session.user.id,
+    });
+    const modelMessages = await convertToModelMessages(modelReadyMessages);
 
     const stream = createUIMessageStream({
       originalMessages: isToolApprovalFlow ? uiMessages : undefined,

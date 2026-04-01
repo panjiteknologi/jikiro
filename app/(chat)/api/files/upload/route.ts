@@ -1,8 +1,13 @@
-import { put } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { auth } from "@/app/(auth)/auth";
+import {
+  buildChatUploadKey,
+  getInternalFileUrl,
+  uploadFileToS3,
+} from "@/lib/storage/s3";
+import { generateUUID } from "@/lib/utils";
 
 const FileSchema = z.object({
   file: z
@@ -18,7 +23,7 @@ const FileSchema = z.object({
 export async function POST(request: Request) {
   const session = await auth();
 
-  if (!session) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -45,15 +50,26 @@ export async function POST(request: Request) {
     }
 
     const filename = (formData.get("file") as File).name;
-    const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const { key, pathname } = buildChatUploadKey({
+      userId: session.user.id,
+      fileId: generateUUID(),
+      filename,
+    });
     const fileBuffer = await file.arrayBuffer();
 
     try {
-      const data = await put(`${safeName}`, fileBuffer, {
-        access: "public",
+      await uploadFileToS3({
+        key,
+        body: Buffer.from(fileBuffer),
+        contentType: file.type,
+        filename: pathname,
       });
 
-      return NextResponse.json(data);
+      return NextResponse.json({
+        url: getInternalFileUrl(key),
+        pathname,
+        contentType: file.type,
+      });
     } catch (_error) {
       return NextResponse.json({ error: "Upload failed" }, { status: 500 });
     }

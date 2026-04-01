@@ -258,6 +258,7 @@ function PureArtifact({
   };
 
   const [isToolbarVisible, setIsToolbarVisible] = useState(true);
+  const [hasMounted, setHasMounted] = useState(false);
 
   const isCurrentVersion =
     documents && documents.length > 0
@@ -265,7 +266,7 @@ function PureArtifact({
       : true;
 
   const { width: windowWidth, height: windowHeight } = useWindowSize();
-  const isMobile = windowWidth ? windowWidth < 768 : false;
+  const isMobile = hasMounted && windowWidth ? windowWidth < 768 : false;
 
   const artifactDefinition = artifactDefinitions.find(
     (definition) => definition.kind === artifact.kind
@@ -283,6 +284,10 @@ function PureArtifact({
       });
     }
   }, [artifact.documentId, artifactDefinition, setMetadata]);
+
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
 
   if (!artifact.isVisible && !isMobile) {
     return (

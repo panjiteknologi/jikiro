@@ -1,0 +1,82 @@
+import { NextResponse } from "next/server";
+import { auth } from "@/app/(auth)/auth";
+import {
+  decodeStorageKey,
+  getChatUploadPrefix,
+  getFileFromS3,
+} from "@/lib/storage/s3";
+
+function sanitizeHeaderFilename(filename: string) {
+  return filename.replace(/["\\\r\n]/g, "_");
+}
+
+function getFilenameFromKey(key: string) {
+  const lastSegment = key.split("/").at(-1) ?? "file";
+  const [, ...rest] = lastSegment.split("-");
+
+  return rest.length > 0 ? rest.join("-") : lastSegment;
+}
+
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ key: string }> }
+) {
+  const session = await auth();
+
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  let storageKey: string;
+
+  try {
+    const resolvedParams = await params;
+    storageKey = decodeStorageKey(resolvedParams.key);
+  } catch {
+    return NextResponse.json({ error: "Invalid file key" }, { status: 400 });
+  }
+
+  if (!storageKey.startsWith(getChatUploadPrefix(session.user.id))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  try {
+    const object = await getFileFromS3(storageKey);
+
+    if (!object.Body) {
+      return NextResponse.json({ error: "File not found" }, { status: 404 });
+    }
+
+    const body = await object.Body.transformToByteArray();
+    const responseBody = Buffer.from(body);
+    const filename = sanitizeHeaderFilename(
+      object.Metadata?.originalname ?? getFilenameFromKey(storageKey)
+    );
+
+    return new Response(responseBody, {
+      headers: {
+        "Cache-Control": "private, no-store, max-age=0",
+        "Content-Disposition": `inline; filename="${filename}"`,
+        "Content-Length": String(body.byteLength),
+        "Content-Type": object.ContentType ?? "application/octet-stream",
+      },
+    });
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "$metadata" in error &&
+      typeof error.$metadata === "object" &&
+      error.$metadata !== null &&
+      "httpStatusCode" in error.$metadata &&
+      error.$metadata.httpStatusCode === 404
+    ) {
+      return NextResponse.json({ error: "File not found" }, { status: 404 });
+    }
+
+    return NextResponse.json(
+      { error: "Failed to fetch file" },
+      { status: 500 }
+    );
+  }
+}

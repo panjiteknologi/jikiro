@@ -231,10 +231,14 @@ function PureMultimodalInput({
           name: attachment.name,
           mediaType: attachment.contentType,
         })),
-        {
-          type: "text",
-          text: input,
-        },
+        ...(input.trim()
+          ? [
+              {
+                type: "text" as const,
+                text: input,
+              },
+            ]
+          : []),
       ],
     });
 
