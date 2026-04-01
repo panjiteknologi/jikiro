@@ -57,6 +57,42 @@ export async function createUser(email: string, password: string) {
   }
 }
 
+export async function createOAuthUser({
+  email,
+  name,
+  image,
+}: {
+  email: string;
+  name?: string | null;
+  image?: string | null;
+}) {
+  try {
+    const [createdUser] = await db
+      .insert(user)
+      .values({
+        email,
+        password: null,
+        name: name ?? null,
+        image: image ?? null,
+        emailVerified: true,
+        isAnonymous: false,
+      })
+      .returning({
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        image: user.image,
+      });
+
+    return createdUser;
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to create OAuth user"
+    );
+  }
+}
+
 export async function createGuestUser() {
   const email = `guest-${Date.now()}`;
   const password = generateHashedPassword(generateUUID());

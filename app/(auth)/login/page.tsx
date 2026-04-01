@@ -49,7 +49,11 @@ export default function Page() {
       <p className="text-sm text-muted-foreground">
         Sign in to your account to continue
       </p>
-      <AuthForm action={handleSubmit} defaultEmail={email}>
+      <AuthForm
+        action={handleSubmit}
+        defaultEmail={email}
+        googleLabel="Continue with Google"
+      >
         <SubmitButton isSuccessful={isSuccessful}>Sign in</SubmitButton>
         <p className="text-center text-[13px] text-muted-foreground">
           {"No account? "}
