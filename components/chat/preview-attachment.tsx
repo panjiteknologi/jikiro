@@ -29,8 +29,13 @@ export const PreviewAttachment = ({
           width={96}
         />
       ) : (
-        <div className="flex size-full items-center justify-center text-muted-foreground text-xs">
-          File
+        <div className="flex size-full flex-col items-center justify-center gap-1 px-2 text-center">
+          <div className="rounded-md border border-border/40 bg-background px-2 py-1 text-[10px] font-medium text-foreground">
+            File
+          </div>
+          <div className="line-clamp-2 text-[10px] leading-tight text-muted-foreground">
+            {name ?? "attachment"}
+          </div>
         </div>
       )}
 

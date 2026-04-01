@@ -5,6 +5,8 @@ import { auth } from "@/app/(auth)/auth";
 import {
   buildChatUploadKey,
   getInternalFileUrl,
+  isSupportedAttachmentMimeType,
+  SUPPORTED_ATTACHMENT_MIME_TYPES,
   uploadFileToS3,
 } from "@/lib/storage/s3";
 import { generateUUID } from "@/lib/utils";
@@ -15,8 +17,8 @@ const FileSchema = z.object({
     .refine((file) => file.size <= 5 * 1024 * 1024, {
       message: "File size should be less than 5MB",
     })
-    .refine((file) => ["image/jpeg", "image/png"].includes(file.type), {
-      message: "File type should be JPEG or PNG",
+    .refine((file) => isSupportedAttachmentMimeType(file.type), {
+      message: `File type should be one of: ${SUPPORTED_ATTACHMENT_MIME_TYPES.join(", ")}`,
     }),
 });
 

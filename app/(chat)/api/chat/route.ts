@@ -24,6 +24,7 @@ import {
   extractStorageKeyFromFileUrl,
   getChatUploadPrefix,
   getFileDataUrlFromS3,
+  isImageAttachmentMimeType,
 } from "@/lib/storage/s3";
 import { createDocument } from "@/lib/ai/tools/create-document";
 import { editDocument } from "@/lib/ai/tools/edit-document";
@@ -80,6 +81,20 @@ async function resolvePrivateFilePartsForModel({
         message.parts.map(async (part) => {
           if (part.type !== "file") {
             return part;
+          }
+
+          if (!isImageAttachmentMimeType(part.mediaType)) {
+            const fileLabel =
+              ("filename" in part && typeof part.filename === "string"
+                ? part.filename
+                : "name" in part && typeof part.name === "string"
+                  ? part.name
+                  : "file");
+
+            return {
+              type: "text" as const,
+              text: `User attached file: ${fileLabel} (${part.mediaType}). File contents are not included in model context.`,
+            };
           }
 
           const storageKey = extractStorageKeyFromFileUrl(part.url);
