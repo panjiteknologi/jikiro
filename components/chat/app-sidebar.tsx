@@ -19,11 +19,11 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
+import Jikiro from '@/public/svg/jikiro';
 import {
-  MessageSquareIcon,
   PanelLeftIcon,
   PenSquareIcon,
-  TrashIcon,
+  TrashIcon
 } from "lucide-react";
 import type { User } from "next-auth";
 import Link from "next/link";
@@ -77,7 +77,7 @@ export function AppSidebar({ user }: { user: User | undefined }) {
                   tooltip="Chatbot"
                 >
                   <Link href="/" onClick={() => setOpenMobile(false)}>
-                    <MessageSquareIcon className="size-4 text-sidebar-foreground/50" />
+                    <Jikiro className='size-40' />
                   </Link>
                 </SidebarMenuButton>
                 <Tooltip>
