@@ -1,10 +1,13 @@
 import { embedMany } from "ai";
 import { FatalError } from "workflow";
+import type { UserType } from "@/app/(auth)/auth";
 import { getEmbeddingModel } from "@/lib/ai/providers";
 import {
+  ATTACHMENT_EMBEDDING_MODEL_ID,
   assertAttachmentEmbeddingsDimensions,
   isReadableDocumentMimeType,
 } from "@/lib/attachments";
+import { recordAiUsage } from "@/lib/billing/service";
 import {
   chunkExtractedDocumentText,
   extractReadableDocumentText,
@@ -19,6 +22,7 @@ import { getFileBufferFromS3 } from "@/lib/storage/s3";
 export type AttachmentWorkflowInput = {
   attachmentId: string;
   userId: string;
+  userType: UserType;
 };
 
 type ExtractedAttachmentResult =
@@ -35,11 +39,13 @@ type ExtractedAttachmentResult =
 export async function runAttachmentAssetIngestion({
   attachmentId,
   userId,
+  userType,
 }: AttachmentWorkflowInput) {
   try {
     const extracted = await extractAttachmentTextStep({
       attachmentId,
       userId,
+      userType,
     });
 
     if (extracted.skipped) {
@@ -52,6 +58,7 @@ export async function runAttachmentAssetIngestion({
       text: extracted.text,
       truncated: extracted.truncated,
       userId,
+      userType,
     });
 
     return { attachmentId, status: "ready" as const };
@@ -69,6 +76,7 @@ export async function runAttachmentAssetIngestion({
 export async function extractAttachmentTextStep({
   attachmentId,
   userId,
+  userType: _userType,
 }: AttachmentWorkflowInput): Promise<ExtractedAttachmentResult> {
   "use step";
 
@@ -128,12 +136,14 @@ export async function indexAttachmentTextStep({
   text,
   truncated,
   userId,
+  userType,
 }: {
   attachmentId: string;
   chatId: string;
   text: string;
   truncated: boolean;
   userId: string;
+  userType: UserType;
 }) {
   "use step";
 
@@ -146,7 +156,7 @@ export async function indexAttachmentTextStep({
   }
 
   const embeddingModel = getEmbeddingModel();
-  const { embeddings } = await embedMany({
+  const { embeddings, providerMetadata, responses, usage } = await embedMany({
     model: embeddingModel,
     values: chunks,
   });
@@ -175,6 +185,19 @@ export async function indexAttachmentTextStep({
     status: "ready",
     extractedText: text,
     truncated,
+  });
+
+  await recordAiUsage({
+    chatId,
+    modelId: ATTACHMENT_EMBEDDING_MODEL_ID,
+    promptTokens: usage.tokens,
+    providerMetadata,
+    providerName: ATTACHMENT_EMBEDDING_MODEL_ID.split("/")[0],
+    responseBody: responses?.map((response) => response?.body ?? null) ?? null,
+    totalTokens: usage.tokens,
+    usageKind: "attachment_embedding",
+    userId,
+    userType,
   });
 }
 

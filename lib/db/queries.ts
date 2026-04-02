@@ -13,8 +13,6 @@ import {
   type SQL,
   sql,
 } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
 import type { ArtifactKind } from "@/components/chat/artifact";
 import type { VisibilityType } from "@/components/chat/visibility-selector";
 import type {
@@ -25,6 +23,7 @@ import { assertAttachmentEmbeddingDimensions } from "@/lib/attachments";
 import type { RetrievedDocumentChunk } from "@/lib/attachments/ingestion";
 import { ChatbotError } from "../errors";
 import { generateUUID } from "../utils";
+import { db } from "./client";
 import {
   attachmentAsset,
   attachmentChunk,
@@ -41,9 +40,6 @@ import {
   vote,
 } from "./schema";
 import { generateHashedPassword } from "./utils";
-
-const client = postgres(process.env.POSTGRES_URL ?? "");
-const db = drizzle(client);
 
 export async function getUser(email: string): Promise<User[]> {
   try {
@@ -599,6 +595,35 @@ export async function getAttachmentAssetsByChatId({
     throw new ChatbotError(
       "bad_request:database",
       "Failed to get attachment assets by chat id"
+    );
+  }
+}
+
+export async function getAttachmentAssetCountByChatId({
+  chatId,
+  userId,
+}: {
+  chatId: string;
+  userId: string;
+}) {
+  try {
+    const [row] = await db
+      .select({
+        count: count(attachmentAsset.id),
+      })
+      .from(attachmentAsset)
+      .where(
+        and(
+          eq(attachmentAsset.chatId, chatId),
+          eq(attachmentAsset.userId, userId)
+        )
+      );
+
+    return row?.count ?? 0;
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to get attachment asset count by chat id"
     );
   }
 }

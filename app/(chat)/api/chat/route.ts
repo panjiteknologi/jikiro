@@ -13,9 +13,7 @@ import { checkBotId } from "botid/server";
 import { after } from "next/server";
 import { createResumableStreamContext } from "resumable-stream";
 import { auth, type UserType } from "@/app/(auth)/auth";
-import { entitlementsByUserType } from "@/lib/ai/entitlements";
 import {
-  allowedModelIds,
   chatModels,
   DEFAULT_CHAT_MODEL,
   getCapabilities,
@@ -28,6 +26,7 @@ import { getWeather } from "@/lib/ai/tools/get-weather";
 import { requestSuggestions } from "@/lib/ai/tools/request-suggestions";
 import { updateDocument } from "@/lib/ai/tools/update-document";
 import {
+  ATTACHMENT_EMBEDDING_MODEL_ID,
   assertAttachmentEmbeddingDimensions,
   DOCUMENT_RETRIEVAL_LIMIT,
   isReadableDocumentMimeType,
@@ -36,6 +35,17 @@ import {
   buildRetrievedDocumentContext,
   getAttachmentRetrievalQuery,
 } from "@/lib/attachments/ingestion";
+import {
+  extractGenerationId,
+  lookupAiGatewayGeneration,
+} from "@/lib/billing/ai-gateway";
+import { convertUsdToMicros } from "@/lib/billing/credits";
+import { getFallbackModelId } from "@/lib/billing/plans";
+import {
+  recordAiUsage,
+  resolveBillingState,
+  type ResolvedBillingState,
+} from "@/lib/billing/service";
 import { isProductionEnvironment } from "@/lib/constants";
 import {
   createStreamId,
@@ -131,15 +141,19 @@ function resolvePrivateFilePartsForModel({
 }
 
 async function injectRetrievedDocumentContext({
+  billingState,
   chatId,
   messages,
   originalMessages,
   userId,
+  userType,
 }: {
+  billingState: ResolvedBillingState;
   chatId: string;
   messages: ChatMessage[];
   originalMessages: ChatMessage[];
   userId: string;
+  userType: UserType;
 }) {
   const originalLastMessage = originalMessages.at(-1);
   const resolvedLastMessage = messages.at(-1);
@@ -208,12 +222,42 @@ async function injectRetrievedDocumentContext({
   }
 
   const retrievalQuery = getAttachmentRetrievalQuery(latestUserText);
-  const { embedding } = await embed({
+  const { embedding, providerMetadata, response, usage } = await embed({
     model: getEmbeddingModel(),
+    providerOptions: {
+      gateway: {
+        metadata: {
+          chatId,
+          tier: billingState.entitlements.tier,
+          usageKind: "retrieval_embedding",
+        },
+        user: userId,
+      },
+    },
     value: retrievalQuery,
   });
 
   assertAttachmentEmbeddingDimensions(embedding);
+
+  await recordAiUsage({
+    billingState,
+    chatId,
+    modelId: ATTACHMENT_EMBEDDING_MODEL_ID,
+    promptTokens: usage.tokens,
+    providerMetadata,
+    providerName: ATTACHMENT_EMBEDDING_MODEL_ID.split("/")[0],
+    responseBody: response?.body ?? null,
+    totalTokens: usage.tokens,
+    usageKind: "retrieval_embedding",
+    userId,
+    userType,
+  }).catch((error) => {
+    console.error("Failed to record retrieval embedding usage", {
+      chatId,
+      error,
+      userId,
+    });
+  });
 
   const retrievedChunks = await retrieveRelevantAttachmentChunks({
     attachmentIds: retrievalAttachmentIds,
@@ -276,20 +320,32 @@ export async function POST(request: Request) {
       return new ChatbotError("unauthorized:chat").toResponse();
     }
 
-    const chatModel = allowedModelIds.has(selectedChatModel)
-      ? selectedChatModel
-      : DEFAULT_CHAT_MODEL;
-
     await checkIpRateLimit(ipAddress(request));
 
     const userType: UserType = session.user.type;
+    const billingState = await resolveBillingState({
+      userId: session.user.id,
+      userType,
+    });
+    const allowedModelIds = new Set(billingState.entitlements.allowedModelIds);
+    const chatModel = allowedModelIds.has(selectedChatModel)
+      ? selectedChatModel
+      : getFallbackModelId(billingState.entitlements.allowedModelIds) ??
+        DEFAULT_CHAT_MODEL;
+
+    if (
+      billingState.remainingCredits !== null &&
+      billingState.remainingCredits <= 0
+    ) {
+      return new ChatbotError("rate_limit:chat").toResponse();
+    }
 
     const messageCount = await getMessageCountByUserId({
       id: session.user.id,
       differenceInHours: 1,
     });
 
-    if (messageCount > entitlementsByUserType[userType].maxMessagesPerHour) {
+    if (messageCount > billingState.entitlements.maxMessagesPerHour) {
       return new ChatbotError("rate_limit:chat").toResponse();
     }
 
@@ -389,10 +445,12 @@ export async function POST(request: Request) {
     const modelReadyMessages = isToolApprovalFlow
       ? resolvedMessages
       : await injectRetrievedDocumentContext({
+          billingState,
           chatId: id,
           messages: resolvedMessages,
           originalMessages: uiMessages,
           userId: session.user.id,
+          userType,
         });
     const modelMessages = await convertToModelMessages(modelReadyMessages);
 
@@ -416,12 +474,70 @@ export async function POST(request: Request) {
                   "requestSuggestions",
                 ],
           providerOptions: {
-            ...(modelConfig?.gatewayOrder && {
-              gateway: { order: modelConfig.gatewayOrder },
-            }),
+            gateway: {
+              ...(modelConfig?.gatewayOrder && {
+                order: modelConfig.gatewayOrder,
+              }),
+              metadata: {
+                chatId: id,
+                tier: billingState.entitlements.tier,
+                usageKind: "chat_generation",
+              },
+              user: session.user.id,
+            },
             ...(modelConfig?.reasoningEffort && {
               openai: { reasoningEffort: modelConfig.reasoningEffort },
             }),
+          },
+          onFinish: async (event) => {
+            try {
+              const generationId = extractGenerationId(
+                event.response.id,
+                event.providerMetadata
+              );
+              const generationLookup = generationId
+                ? await lookupAiGatewayGeneration(generationId)
+                : null;
+              const costMicrosUsd =
+                generationLookup?.totalCostUsd != null &&
+                Number.isFinite(generationLookup.totalCostUsd)
+                  ? convertUsdToMicros(generationLookup.totalCostUsd)
+                  : null;
+
+              await recordAiUsage({
+                billingState,
+                cachedInputTokens:
+                  generationLookup?.cachedInputTokens ??
+                  event.totalUsage.cachedInputTokens,
+                chatId: id,
+                completionTokens:
+                  generationLookup?.completionTokens ??
+                  event.totalUsage.outputTokens,
+                costMicrosUsd,
+                generationId,
+                modelId: chatModel,
+                promptTokens:
+                  generationLookup?.promptTokens ?? event.totalUsage.inputTokens,
+                providerMetadata: event.providerMetadata,
+                providerName:
+                  generationLookup?.providerName ?? chatModel.split("/")[0],
+                reasoningTokens:
+                  generationLookup?.reasoningTokens ??
+                  event.totalUsage.reasoningTokens,
+                responseBody: generationLookup?.raw ?? event.response.body ?? null,
+                totalTokens:
+                  generationLookup?.totalTokens ?? event.totalUsage.totalTokens,
+                usageKind: "chat_generation",
+                userId: session.user.id,
+                userType,
+              });
+            } catch (error) {
+              console.error("Failed to record chat generation usage", {
+                chatId: id,
+                error,
+                userId: session.user.id,
+              });
+            }
           },
           tools: {
             getWeather,

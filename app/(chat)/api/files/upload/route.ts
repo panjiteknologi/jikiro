@@ -4,12 +4,13 @@ import { z } from "zod";
 
 import { auth } from "@/app/(auth)/auth";
 import {
-  getAttachmentSizeLimit,
   isReadableDocumentMimeType,
   isSupportedAttachmentMimeType,
   SUPPORTED_ATTACHMENT_MIME_TYPES,
 } from "@/lib/attachments";
+import { resolveBillingState } from "@/lib/billing/service";
 import {
+  getAttachmentAssetCountByChatId,
   createAttachmentAsset,
   deleteAttachmentAssetById,
   getChatById,
@@ -64,6 +65,10 @@ export async function POST(request: Request) {
 
     const { chatId, file } = parsedRequest.data;
     const chat = await getChatById({ id: chatId });
+    const billingState = await resolveBillingState({
+      userId: session.user.id,
+      userType: session.user.type,
+    });
 
     if (chat && chat.userId !== session.user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -78,13 +83,45 @@ export async function POST(request: Request) {
       );
     }
 
-    const maxSize = getAttachmentSizeLimit(file.type);
+    const currentAttachmentCount = await getAttachmentAssetCountByChatId({
+      chatId,
+      userId: session.user.id,
+    });
+
+    if (
+      currentAttachmentCount >= billingState.entitlements.attachmentLimits.maxFilesPerChat
+    ) {
+      return NextResponse.json(
+        {
+          error: `Your current plan allows up to ${billingState.entitlements.attachmentLimits.maxFilesPerChat} files per chat.`,
+        },
+        { status: 403 }
+      );
+    }
+
+    const maxSize = isReadableDocumentMimeType(file.type)
+      ? billingState.entitlements.attachmentLimits.maxDocumentSizeBytes
+      : billingState.entitlements.attachmentLimits.maxImageSizeBytes;
 
     if (file.size > maxSize) {
       const maxSizeInMb = Math.round(maxSize / (1024 * 1024));
       return NextResponse.json(
         { error: `File size should be less than ${maxSizeInMb}MB` },
         { status: 400 }
+      );
+    }
+
+    if (
+      isReadableDocumentMimeType(file.type) &&
+      billingState.remainingCredits !== null &&
+      billingState.remainingCredits <= 0
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "You do not have enough AI credits to process another document. Upgrade or wait for your next cycle.",
+        },
+        { status: 403 }
       );
     }
 
@@ -122,6 +159,7 @@ export async function POST(request: Request) {
         const workflowInput = {
           attachmentId: createdAttachment.id,
           userId: session.user.id,
+          userType: session.user.type,
         };
 
         if (shouldUseDirectIngestionFallback()) {

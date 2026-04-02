@@ -347,7 +347,7 @@ export async function GET() {
 3. **Set `output: 'standalone'`** for Docker
 4. **Configure cache handler** for multi-instance ISR
 5. **Set `HOSTNAME="0.0.0.0"`** for containers
-6. **Copy `public/` and `.next/static/`** - not included in standalone
+6. **Copy `public/` and `.next/static/`** -  in standalone
 7. **Add health check endpoint**
 8. **Test ISR revalidation** after deployment
 9. **Monitor memory usage** - Node.js defaults may need tuning

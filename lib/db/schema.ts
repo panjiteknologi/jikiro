@@ -19,6 +19,15 @@ import {
   ATTACHMENT_EMBEDDING_DIMENSIONS,
   SUPPORTED_ATTACHMENT_MIME_TYPES,
 } from "@/lib/attachments";
+import {
+  billingIntervals,
+  checkoutStatuses,
+  creditLedgerEntryKinds,
+  planSlugs,
+  subscriptionStatuses,
+  usageKinds,
+} from "@/lib/billing/types";
+import type { PlanSnapshot } from "@/lib/billing/types";
 
 export const user = pgTable("User", {
   id: uuid("id").primaryKey().notNull().defaultRandom(),
@@ -33,6 +42,161 @@ export const user = pgTable("User", {
 });
 
 export type User = InferSelectModel<typeof user>;
+
+export const planSlugEnum = pgEnum("PlanSlug", planSlugs);
+export const billingIntervalEnum = pgEnum("BillingInterval", billingIntervals);
+export const subscriptionStatusEnum = pgEnum(
+  "SubscriptionStatus",
+  subscriptionStatuses
+);
+export const checkoutStatusEnum = pgEnum("CheckoutStatus", checkoutStatuses);
+export const creditLedgerEntryKindEnum = pgEnum(
+  "CreditLedgerEntryKind",
+  creditLedgerEntryKinds
+);
+export const usageKindEnum = pgEnum("AiUsageKind", usageKinds);
+
+export const billingCheckout = pgTable(
+  "BillingCheckout",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id),
+    planSlug: planSlugEnum("planSlug").notNull(),
+    interval: billingIntervalEnum("interval").notNull(),
+    status: checkoutStatusEnum("status").notNull().default("pending"),
+    merchantRef: varchar("merchantRef", { length: 128 }).notNull(),
+    tripayReference: varchar("tripayReference", { length: 128 }),
+    paymentMethod: varchar("paymentMethod", { length: 64 }),
+    paymentName: text("paymentName"),
+    checkoutUrl: text("checkoutUrl"),
+    payCode: text("payCode"),
+    payUrl: text("payUrl"),
+    callbackUrl: text("callbackUrl"),
+    returnUrl: text("returnUrl"),
+    amountIdr: integer("amountIdr").notNull(),
+    feeMerchantIdr: integer("feeMerchantIdr"),
+    feeCustomerIdr: integer("feeCustomerIdr"),
+    amountReceivedIdr: integer("amountReceivedIdr"),
+    currency: varchar("currency", { length: 8 }).notNull().default("IDR"),
+    expiresAt: timestamp("expiresAt"),
+    paidAt: timestamp("paidAt"),
+    planSnapshot: json("planSnapshot").$type<PlanSnapshot>().notNull(),
+    rawRequest: json("rawRequest"),
+    rawResponse: json("rawResponse"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    merchantRefIdx: uniqueIndex("BillingCheckout_merchantRef_idx").on(
+      table.merchantRef
+    ),
+    tripayReferenceIdx: uniqueIndex("BillingCheckout_tripayReference_idx").on(
+      table.tripayReference
+    ),
+  })
+);
+
+export type BillingCheckout = InferSelectModel<typeof billingCheckout>;
+
+export const subscription = pgTable(
+  "Subscription",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id),
+    planSlug: planSlugEnum("planSlug").notNull(),
+    interval: billingIntervalEnum("interval").notNull(),
+    status: subscriptionStatusEnum("status").notNull().default("active"),
+    currentPeriodStart: timestamp("currentPeriodStart").notNull(),
+    currentPeriodEnd: timestamp("currentPeriodEnd").notNull(),
+    planSnapshot: json("planSnapshot").$type<PlanSnapshot>().notNull(),
+    lastCheckoutId: uuid("lastCheckoutId").references(() => billingCheckout.id),
+    cancelledAt: timestamp("cancelledAt"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    userIdIdx: uniqueIndex("Subscription_userId_idx").on(table.userId),
+  })
+);
+
+export type Subscription = InferSelectModel<typeof subscription>;
+
+export const billingEvent = pgTable(
+  "BillingEvent",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    userId: uuid("userId").references(() => user.id),
+    checkoutId: uuid("checkoutId").references(() => billingCheckout.id),
+    eventKey: varchar("eventKey", { length: 191 }).notNull(),
+    eventType: varchar("eventType", { length: 64 }).notNull(),
+    signature: text("signature"),
+    headers: json("headers"),
+    payload: json("payload").notNull(),
+    processedAt: timestamp("processedAt"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    eventKeyIdx: uniqueIndex("BillingEvent_eventKey_idx").on(table.eventKey),
+  })
+);
+
+export type BillingEvent = InferSelectModel<typeof billingEvent>;
+
+export const creditLedger = pgTable(
+  "CreditLedger",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id),
+    subscriptionId: uuid("subscriptionId").references(() => subscription.id),
+    checkoutId: uuid("checkoutId").references(() => billingCheckout.id),
+    aiUsageId: uuid("aiUsageId"),
+    kind: creditLedgerEntryKindEnum("kind").notNull(),
+    amount: integer("amount").notNull(),
+    balanceNote: text("balanceNote"),
+    externalId: varchar("externalId", { length: 191 }),
+    metadata: json("metadata"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    externalIdIdx: uniqueIndex("CreditLedger_externalId_idx").on(
+      table.externalId
+    ),
+  })
+);
+
+export type CreditLedger = InferSelectModel<typeof creditLedger>;
+
+export const aiGenerationUsage = pgTable("AiGenerationUsage", {
+  id: uuid("id").primaryKey().notNull().defaultRandom(),
+  userId: uuid("userId")
+    .notNull()
+    .references(() => user.id),
+  subscriptionId: uuid("subscriptionId").references(() => subscription.id),
+  checkoutId: uuid("checkoutId").references(() => billingCheckout.id),
+  chatId: uuid("chatId"),
+  usageKind: usageKindEnum("usageKind").notNull(),
+  modelId: text("modelId").notNull(),
+  providerName: varchar("providerName", { length: 64 }),
+  generationId: varchar("generationId", { length: 191 }),
+  promptTokens: integer("promptTokens").notNull().default(0),
+  completionTokens: integer("completionTokens").notNull().default(0),
+  totalTokens: integer("totalTokens").notNull().default(0),
+  reasoningTokens: integer("reasoningTokens").notNull().default(0),
+  cachedInputTokens: integer("cachedInputTokens").notNull().default(0),
+  costMicrosUsd: integer("costMicrosUsd"),
+  creditCost: integer("creditCost").notNull().default(0),
+  providerMetadata: json("providerMetadata"),
+  responseBody: json("responseBody"),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+});
+
+export type AiGenerationUsage = InferSelectModel<typeof aiGenerationUsage>;
 
 export const chat = pgTable("Chat", {
   id: uuid("id").primaryKey().notNull().defaultRandom(),

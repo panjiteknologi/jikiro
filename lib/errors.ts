@@ -12,6 +12,7 @@ export type Surface =
   | "api"
   | "stream"
   | "database"
+  | "billing"
   | "history"
   | "vote"
   | "document"
@@ -24,6 +25,7 @@ export type ErrorVisibility = "response" | "log" | "none";
 
 export const visibilityBySurface: Record<Surface, ErrorVisibility> = {
   database: "log",
+  billing: "response",
   chat: "response",
   auth: "response",
   stream: "response",
@@ -91,9 +93,15 @@ export function getMessageByErrorCode(errorCode: ErrorCode): string {
       return "You need to sign in before continuing.";
     case "forbidden:auth":
       return "Your account does not have access to this feature.";
+    case "unauthorized:billing":
+      return "You need to sign in before managing billing.";
+    case "forbidden:billing":
+      return "This billing action is not available for your current account.";
+    case "bad_request:billing":
+      return "The billing request could not be processed. Please try again.";
 
     case "rate_limit:chat":
-      return "You've reached the message limit. Come back in 1 hour to continue chatting.";
+      return "You've reached your current AI usage limit. Try again later or upgrade your plan.";
     case "not_found:chat":
       return "The requested chat was not found. Please check the chat ID and try again.";
     case "forbidden:chat":

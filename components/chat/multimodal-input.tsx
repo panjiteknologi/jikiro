@@ -66,6 +66,14 @@ import {
 import { SuggestedActions } from "./suggested-actions";
 import type { VisibilityType } from "./visibility-selector";
 
+const safeInitialModels = chatModels.filter((model) =>
+  [
+    DEFAULT_CHAT_MODEL,
+    "deepseek/deepseek-v3.2",
+    "mistral/mistral-small",
+  ].includes(model.id)
+);
+
 function setCookie(name: string, value: string) {
   const maxAge = 60 * 60 * 24 * 365;
   // biome-ignore lint/suspicious/noDocumentCookie: needed for client-side cookie setting
@@ -768,13 +776,19 @@ function PureModelSelectorCompact({
   const capabilities: Record<string, ModelCapabilities> | undefined =
     modelsData?.capabilities ?? modelsData;
   const dynamicModels: ChatModel[] | undefined = modelsData?.models;
-  const activeModels = dynamicModels ?? chatModels;
+  const activeModels = dynamicModels ?? safeInitialModels;
 
   const selectedModel =
     activeModels.find((m: ChatModel) => m.id === selectedModelId) ??
     activeModels.find((m: ChatModel) => m.id === DEFAULT_CHAT_MODEL) ??
     activeModels[0];
   const [provider] = selectedModel.id.split("/");
+
+  useEffect(() => {
+    if (selectedModel.id !== selectedModelId) {
+      onModelChange?.(selectedModel.id);
+    }
+  }, [onModelChange, selectedModel.id, selectedModelId]);
 
   return (
     <ModelSelector onOpenChange={setOpen} open={open}>

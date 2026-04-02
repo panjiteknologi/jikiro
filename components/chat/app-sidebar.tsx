@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 import Jikiro from '@/public/svg/jikiro';
 import {
+  CreditCardIcon,
   PanelLeftIcon,
   PenSquareIcon,
   TrashIcon
@@ -117,6 +118,16 @@ export function AppSidebar({ user }: { user: User | undefined }) {
                     <span className="font-medium">New chat</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
+                {user && (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild tooltip="Billing">
+                      <Link href="/billing" onClick={() => setOpenMobile(false)}>
+                        <CreditCardIcon className="size-4" />
+                        <span className="text-[13px]">Billing</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )}
                 {user && (
                   <SidebarMenuItem>
                     <SidebarMenuButton
