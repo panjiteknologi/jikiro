@@ -1,5 +1,6 @@
 import { geolocation, ipAddress } from "@vercel/functions";
 import {
+  consumeStream,
   convertToModelMessages,
   createUIMessageStream,
   createUIMessageStreamResponse,
@@ -399,6 +400,7 @@ export async function POST(request: Request) {
       originalMessages: isToolApprovalFlow ? uiMessages : undefined,
       execute: async ({ writer: dataStream }) => {
         const result = streamText({
+          abortSignal: request.signal,
           model: getLanguageModel(chatModel),
           system: systemPrompt({ requestHints, supportsTools }),
           messages: modelMessages,
@@ -510,21 +512,36 @@ export async function POST(request: Request) {
     return createUIMessageStreamResponse({
       stream,
       async consumeSseStream({ stream: sseStream }) {
-        if (!process.env.REDIS_URL) {
-          return;
-        }
         try {
-          const streamContext = getStreamContext();
-          if (streamContext) {
-            const streamId = generateId();
-            await createStreamId({ streamId, chatId: id });
-            await streamContext.createNewResumableStream(
-              streamId,
-              () => sseStream
-            );
+          const [abortAwareStream, resumableStream] = sseStream.tee();
+
+          await Promise.allSettled([
+            consumeStream({
+              stream: abortAwareStream,
+            }),
+            (async () => {
+              if (!process.env.REDIS_URL) {
+                return;
+              }
+
+              const streamContext = getStreamContext();
+              if (streamContext) {
+                const streamId = generateId();
+                await createStreamId({ streamId, chatId: id });
+                await streamContext.createNewResumableStream(
+                  streamId,
+                  () => resumableStream
+                );
+              }
+            })(),
+          ]);
+        } catch (error) {
+          if (
+            error instanceof Error &&
+            error.message.includes("Socket closed unexpectedly")
+          ) {
+            return;
           }
-        } catch (_) {
-          /* non-critical */
         }
       },
     });

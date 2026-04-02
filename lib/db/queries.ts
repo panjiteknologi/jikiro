@@ -14,7 +14,6 @@ import {
   sql,
 } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { cosineDistance } from "drizzle-orm/sql/functions/vector";
 import postgres from "postgres";
 import type { ArtifactKind } from "@/components/chat/artifact";
 import type { VisibilityType } from "@/components/chat/visibility-selector";
@@ -23,6 +22,7 @@ import type {
   SupportedAttachmentMimeType,
 } from "@/lib/attachments";
 import { assertAttachmentEmbeddingDimensions } from "@/lib/attachments";
+import type { RetrievedDocumentChunk } from "@/lib/attachments/ingestion";
 import { ChatbotError } from "../errors";
 import { generateUUID } from "../utils";
 import {
@@ -633,13 +633,16 @@ export async function retrieveRelevantAttachmentChunks({
   embedding: number[];
   limit: number;
   userId: string;
-}) {
+}): Promise<RetrievedDocumentChunk[]> {
   try {
     assertAttachmentEmbeddingDimensions(embedding);
 
-    const distance = cosineDistance(attachmentChunk.embedding, embedding);
+    const distance =
+      sql<number>`${attachmentChunk.embedding} <=> ${embedding}`.as(
+        "distance"
+      );
 
-    return await db
+    const rows: Array<RetrievedDocumentChunk & { distance: number }> = await db
       .select({
         attachmentId: attachmentChunk.attachmentId,
         filename: attachmentAsset.filename,
@@ -663,6 +666,12 @@ export async function retrieveRelevantAttachmentChunks({
       )
       .orderBy(distance)
       .limit(limit);
+
+    return rows.map(({ attachmentId, filename, text }) => ({
+      attachmentId,
+      filename,
+      text,
+    }));
   } catch (_error) {
     throw new ChatbotError(
       "bad_request:database",
