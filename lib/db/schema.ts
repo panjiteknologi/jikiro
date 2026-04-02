@@ -16,6 +16,7 @@ import {
 } from "drizzle-orm/pg-core";
 import {
   ATTACHMENT_ASSET_STATUSES,
+  ATTACHMENT_EMBEDDING_DIMENSIONS,
   SUPPORTED_ATTACHMENT_MIME_TYPES,
 } from "@/lib/attachments";
 
@@ -67,7 +68,7 @@ export const attachmentAssetStatusEnum = pgEnum(
 
 const pgVector = customType<{ data: number[]; driverData: string }>({
   dataType() {
-    return "vector";
+    return `vector(${ATTACHMENT_EMBEDDING_DIMENSIONS})`;
   },
   toDriver(value) {
     return JSON.stringify(value);

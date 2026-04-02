@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { start } from "workflow/api";
 import { z } from "zod";
 
@@ -22,6 +22,7 @@ import {
 } from "@/lib/storage/s3";
 import { generateUUID } from "@/lib/utils";
 import { ingestAttachmentAssetWorkflow } from "@/workflows/attachment-ingestion";
+import { runAttachmentAssetIngestion } from "@/workflows/attachment-ingestion-steps";
 
 const UploadRequestSchema = z.object({
   chatId: z.string().uuid(),
@@ -118,26 +119,39 @@ export async function POST(request: Request) {
       });
 
       if (isReadableDocumentMimeType(file.type)) {
-        try {
-          await start(ingestAttachmentAssetWorkflow, [
-            {
-              attachmentId: createdAttachment.id,
-              userId: session.user.id,
-            },
-          ]);
-        } catch (_error) {
-          await Promise.allSettled([
-            deleteFileFromS3(key),
-            deleteAttachmentAssetById({
-              id: createdAttachment.id,
-              userId: session.user.id,
-            }),
-          ]);
+        const workflowInput = {
+          attachmentId: createdAttachment.id,
+          userId: session.user.id,
+        };
 
-          return NextResponse.json(
-            { error: "Failed to start document processing" },
-            { status: 500 }
-          );
+        if (shouldUseDirectIngestionFallback()) {
+          after(async () => {
+            try {
+              await runAttachmentAssetIngestion(workflowInput);
+            } catch (error) {
+              console.error("Direct attachment ingestion failed", {
+                attachmentId: createdAttachment.id,
+                error,
+              });
+            }
+          });
+        } else {
+          try {
+            await start(ingestAttachmentAssetWorkflow, [workflowInput]);
+          } catch (_error) {
+            await Promise.allSettled([
+              deleteFileFromS3(key),
+              deleteAttachmentAssetById({
+                id: createdAttachment.id,
+                userId: session.user.id,
+              }),
+            ]);
+
+            return NextResponse.json(
+              { error: "Failed to start document processing" },
+              { status: 500 }
+            );
+          }
         }
       }
 
@@ -157,4 +171,8 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
+}
+
+function shouldUseDirectIngestionFallback() {
+  return (process.env.WORKFLOW_TARGET_WORLD ?? "local") === "local";
 }

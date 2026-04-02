@@ -62,7 +62,7 @@ If you are running outside Vercel and want durable background document ingestion
 ```bash
 WORKFLOW_TARGET_WORLD=@workflow/world-postgres
 WORKFLOW_POSTGRES_URL=postgres://...
-AI_EMBEDDING_MODEL=<your-gateway-embedding-model-id>
+AI_EMBEDDING_MODEL=openai/text-embedding-3-small
 ```
 
 > Note: You should not commit your `.env` file or it will expose secrets that will allow others to control access to your various AI and authentication provider accounts.

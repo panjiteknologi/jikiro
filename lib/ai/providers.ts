@@ -1,4 +1,5 @@
 import { customProvider, gateway } from "ai";
+import { ATTACHMENT_EMBEDDING_MODEL_ID } from "@/lib/attachments";
 import { isTestEnvironment } from "../constants";
 import { titleModel } from "./models";
 
@@ -34,6 +35,12 @@ export function getEmbeddingModel() {
 
   if (!modelId) {
     throw new Error("AI_EMBEDDING_MODEL is not configured");
+  }
+
+  if (modelId !== ATTACHMENT_EMBEDDING_MODEL_ID) {
+    throw new Error(
+      `AI_EMBEDDING_MODEL must be set to ${ATTACHMENT_EMBEDDING_MODEL_ID}`
+    );
   }
 
   return gateway.embeddingModel(modelId);

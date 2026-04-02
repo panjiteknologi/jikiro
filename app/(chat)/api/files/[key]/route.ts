@@ -5,7 +5,7 @@ import {
   decodeStorageKey,
   deleteFileFromS3,
   getChatUploadPrefix,
-  getFileFromS3,
+  getFileBufferFromS3,
 } from "@/lib/storage/s3";
 
 function sanitizeHeaderFilename(filename: string) {
@@ -43,24 +43,19 @@ export async function GET(
   }
 
   try {
-    const object = await getFileFromS3(storageKey);
-
-    if (!object.Body) {
-      return NextResponse.json({ error: "File not found" }, { status: 404 });
-    }
-
-    const body = await object.Body.transformToByteArray();
-    const responseBody = Buffer.from(body);
+    const { buffer, contentType, metadata } = await getFileBufferFromS3(
+      storageKey
+    );
     const filename = sanitizeHeaderFilename(
-      object.Metadata?.originalname ?? getFilenameFromKey(storageKey)
+      metadata?.originalname ?? getFilenameFromKey(storageKey)
     );
 
-    return new Response(responseBody, {
+    return new Response(buffer, {
       headers: {
         "Cache-Control": "private, no-store, max-age=0",
         "Content-Disposition": `inline; filename="${filename}"`,
-        "Content-Length": String(body.byteLength),
-        "Content-Type": object.ContentType ?? "application/octet-stream",
+        "Content-Length": String(buffer.byteLength),
+        "Content-Type": contentType,
       },
     });
   } catch (error) {

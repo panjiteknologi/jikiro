@@ -1,7 +1,12 @@
 import mammoth from "mammoth";
 import Papa from "papaparse";
-import { PDFParse } from "pdf-parse";
-import XLSX from "xlsx";
+import {
+  getDocument,
+  type PDFPageProxy,
+  VerbosityLevel,
+} from "pdfjs-dist/legacy/build/pdf.mjs";
+import { WorkerMessageHandler } from "pdfjs-dist/legacy/build/pdf.worker.mjs";
+import { read, utils } from "xlsx";
 import {
   DOCUMENT_CHUNK_OVERLAP,
   DOCUMENT_CHUNK_SIZE,
@@ -134,10 +139,14 @@ export function getAttachmentRetrievalQuery(text: string) {
 
 export function normalizeExtractedText(text: string) {
   return text
+    .normalize("NFKC")
     .replaceAll("\u0000", " ")
+    .replaceAll("\u00a0", " ")
     .replaceAll("\r\n", "\n")
     .replaceAll("\r", "\n")
-    .replace(/[^\S\n]+/g, " ")
+    .split("\n")
+    .map((line) => line.replace(/[^\S\n]+/g, " ").trim())
+    .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
@@ -147,47 +156,317 @@ export function hasReadableDocumentContentType(mediaType: string) {
 }
 
 async function extractPdfText(buffer: Buffer) {
-  const parser = new PDFParse({ data: buffer });
+  const loadingTask = createPdfLoadingTask(buffer);
 
   try {
-    const result = await parser.getText();
-    return result.text;
+    const document = await loadingTask.promise;
+    const pages: string[] = [];
+
+    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber++) {
+      const page = await document.getPage(pageNumber);
+
+      try {
+        const pageText = await extractPdfPageText(page);
+
+        if (pageText) {
+          pages.push(pageText);
+        }
+      } finally {
+        page.cleanup();
+      }
+    }
+
+    return pages.join("\n\n");
+  } catch (error) {
+    throw new Error(getPdfExtractionErrorMessage(error));
   } finally {
-    await parser.destroy();
+    await loadingTask.destroy();
   }
 }
 
 async function extractDocxText(buffer: Buffer) {
-  const result = await mammoth.extractRawText({ buffer });
-  return result.value;
+  try {
+    const result = await mammoth.extractRawText({ buffer });
+    return result.value;
+  } catch (error) {
+    throw new Error(getDocxExtractionErrorMessage(error));
+  }
 }
 
 function extractCsvText(buffer: Buffer) {
-  const sourceText = buffer.toString("utf8");
+  const sourceText = decodeTextBuffer(buffer);
   const parsed = Papa.parse<string[]>(sourceText, {
     skipEmptyLines: false,
   });
 
   if (parsed.errors.length > 0) {
-    throw new Error(parsed.errors[0]?.message ?? "Failed to parse CSV file");
+    throw new Error(
+      `Failed to parse CSV file: ${parsed.errors[0]?.message ?? "Unknown CSV parser error"}`
+    );
   }
 
-  return parsed.data
-    .map((row) => row.map((cell) => String(cell ?? "").trim()).join(" | "))
-    .join("\n");
+  return renderTabularRows(parsed.data);
 }
 
 function extractXlsxText(buffer: Buffer) {
-  const workbook = XLSX.read(buffer, { type: "buffer" });
+  try {
+    const workbook = read(buffer, {
+      cellDates: true,
+      cellText: true,
+      type: "buffer",
+    });
 
-  return workbook.SheetNames.map((sheetName) => {
-    const sheet = workbook.Sheets[sheetName];
-    const sheetText = XLSX.utils
-      .sheet_to_csv(sheet, { blankrows: false })
-      .trim();
+    return workbook.SheetNames.map((sheetName) => {
+      const sheet = workbook.Sheets[sheetName];
+      const rows = utils.sheet_to_json<string[]>(sheet, {
+        blankrows: false,
+        defval: "",
+        header: 1,
+        raw: false,
+      });
+      const sheetText = renderTabularRows(rows);
 
-    return sheetText
-      ? `Sheet: ${sheetName}\n${sheetText}`
-      : `Sheet: ${sheetName}`;
-  }).join("\n\n");
+      return sheetText
+        ? `Sheet: ${sheetName}\n${sheetText}`
+        : `Sheet: ${sheetName}`;
+    }).join("\n\n");
+  } catch (error) {
+    throw new Error(getXlsxExtractionErrorMessage(error));
+  }
 }
+
+function createPdfLoadingTask(buffer: Buffer) {
+  ensurePdfJsWorker();
+
+  return getDocument({
+    data: Uint8Array.from(buffer),
+    disableFontFace: true,
+    isImageDecoderSupported: false,
+    isOffscreenCanvasSupported: false,
+    stopAtErrors: false,
+    useSystemFonts: false,
+    useWorkerFetch: false,
+    verbosity: VerbosityLevel.ERRORS,
+  });
+}
+
+async function extractPdfPageText(page: PDFPageProxy) {
+  const textContent = await page.getTextContent({
+    disableNormalization: false,
+    includeMarkedContent: false,
+  });
+
+  const lines: Array<{ height: number; text: string; y: number }> = [];
+  let currentLine: PdfTextFragment[] = [];
+  let pendingGapBefore = 0;
+
+  const flushLine = () => {
+    const builtLine = buildPdfLine(currentLine);
+
+    if (!builtLine) {
+      currentLine = [];
+      return;
+    }
+
+    const lineHeight = Math.max(
+      ...currentLine.map((fragment) => fragment.height || 0),
+      1
+    );
+
+    lines.push({
+      height: lineHeight,
+      text: builtLine,
+      y: currentLine[0]?.y ?? 0,
+    });
+    currentLine = [];
+  };
+
+  for (const item of textContent.items) {
+    if (!isPdfTextItem(item)) {
+      continue;
+    }
+
+    const text = item.str.replace(/[^\S\n]+/g, " ").trim();
+    const x = Number(item.transform[4] ?? 0);
+    const y = Number(item.transform[5] ?? 0);
+    const height = Math.abs(Number(item.height ?? 0)) || 1;
+
+    if (!text && !item.hasEOL) {
+      continue;
+    }
+
+    const fragment: PdfTextFragment = {
+      hasEOL: Boolean(item.hasEOL),
+      height,
+      text,
+      width: Math.abs(Number(item.width ?? 0)),
+      x,
+      y,
+    };
+
+    const previousFragment = currentLine.at(-1);
+
+    if (previousFragment) {
+      const lineHeight = Math.max(previousFragment.height, fragment.height, 1);
+      const yGap = Math.abs(previousFragment.y - fragment.y);
+
+      if (yGap > lineHeight * 0.75) {
+        pendingGapBefore = yGap;
+        flushLine();
+      }
+    }
+
+    if (
+      pendingGapBefore > 0 &&
+      lines.length > 0 &&
+      pendingGapBefore >
+        Math.max(lines.at(-1)?.height ?? 1, fragment.height) * 1.6
+    ) {
+      lines.push({
+        height: 0,
+        text: "",
+        y,
+      });
+    }
+
+    pendingGapBefore = 0;
+    currentLine.push(fragment);
+
+    if (fragment.hasEOL) {
+      flushLine();
+    }
+  }
+
+  flushLine();
+
+  return lines
+    .map((line) => line.text)
+    .filter((line, index, allLines) => {
+      if (line) {
+        return true;
+      }
+
+      return index > 0 && index < allLines.length - 1;
+    })
+    .join("\n");
+}
+
+function buildPdfLine(fragments: PdfTextFragment[]) {
+  const sortedFragments = [...fragments].sort(
+    (left, right) => left.x - right.x
+  );
+  let line = "";
+
+  for (const [index, fragment] of sortedFragments.entries()) {
+    if (!fragment.text) {
+      continue;
+    }
+
+    const previous = sortedFragments[index - 1];
+
+    if (previous && line) {
+      const gap = fragment.x - (previous.x + previous.width);
+      const gapThreshold = Math.max(previous.height, fragment.height, 1) * 0.15;
+
+      if (gap > gapThreshold && !line.endsWith(" ")) {
+        line += " ";
+      }
+    }
+
+    line += fragment.text;
+  }
+
+  return line.replace(/[^\S\n]+/g, " ").trim();
+}
+
+function decodeTextBuffer(buffer: Buffer) {
+  return new TextDecoder("utf-8", { fatal: false }).decode(buffer);
+}
+
+function renderTabularRows(rows: readonly (readonly unknown[])[]) {
+  return rows
+    .map((row, index) => {
+      const cells = trimTrailingEmptyCells(
+        row.map((cell) =>
+          String(cell ?? "")
+            .replace(/\s+/g, " ")
+            .trim()
+        )
+      );
+
+      if (cells.length === 0) {
+        return null;
+      }
+
+      return `Row ${index + 1}: ${cells.join(" | ")}`;
+    })
+    .filter((row): row is string => row !== null)
+    .join("\n");
+}
+
+function trimTrailingEmptyCells(cells: string[]) {
+  const trimmedCells = [...cells];
+
+  while (trimmedCells.at(-1) === "") {
+    trimmedCells.pop();
+  }
+
+  return trimmedCells;
+}
+
+function ensurePdfJsWorker() {
+  const pdfJsGlobal = globalThis as typeof globalThis & {
+    pdfjsWorker?: {
+      WorkerMessageHandler?: typeof WorkerMessageHandler;
+    };
+  };
+
+  if (pdfJsGlobal.pdfjsWorker?.WorkerMessageHandler) {
+    return;
+  }
+
+  pdfJsGlobal.pdfjsWorker = { WorkerMessageHandler };
+}
+
+function isPdfTextItem(item: unknown): item is {
+  hasEOL?: boolean;
+  height?: number;
+  str: string;
+  transform: number[];
+  width?: number;
+} {
+  return (
+    typeof item === "object" &&
+    item !== null &&
+    "str" in item &&
+    typeof item.str === "string" &&
+    "transform" in item &&
+    Array.isArray(item.transform)
+  );
+}
+
+function getPdfExtractionErrorMessage(error: unknown) {
+  const details = error instanceof Error ? error.message : "Unknown PDF error";
+  return `Failed to extract text from PDF. The file may be scanned, encrypted, or unsupported. ${details}`.trim();
+}
+
+function getDocxExtractionErrorMessage(error: unknown) {
+  const details =
+    error instanceof Error ? error.message : "Unknown DOCX parser error";
+  return `Failed to extract text from DOCX file: ${details}`;
+}
+
+function getXlsxExtractionErrorMessage(error: unknown) {
+  const details =
+    error instanceof Error ? error.message : "Unknown spreadsheet parser error";
+  return `Failed to extract text from XLSX file: ${details}`;
+}
+
+type PdfTextFragment = {
+  hasEOL: boolean;
+  height: number;
+  text: string;
+  width: number;
+  x: number;
+  y: number;
+};

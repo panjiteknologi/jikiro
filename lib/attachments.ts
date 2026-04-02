@@ -28,6 +28,8 @@ export const DOCUMENT_CONTEXT_TEXT_LIMIT = 12_000;
 export const DOCUMENT_CHUNK_SIZE = 1000;
 export const DOCUMENT_CHUNK_OVERLAP = 150;
 export const DOCUMENT_RETRIEVAL_LIMIT = 8;
+export const ATTACHMENT_EMBEDDING_MODEL_ID = "openai/text-embedding-3-small";
+export const ATTACHMENT_EMBEDDING_DIMENSIONS = 1536;
 
 export type SupportedImageMimeType =
   (typeof SUPPORTED_IMAGE_MIME_TYPES)[number];
@@ -81,5 +83,19 @@ export function getAttachmentStatusLabel(status?: AttachmentAssetStatus) {
       return "Processing";
     default:
       return null;
+  }
+}
+
+export function assertAttachmentEmbeddingDimensions(embedding: number[]) {
+  if (embedding.length !== ATTACHMENT_EMBEDDING_DIMENSIONS) {
+    throw new Error(
+      `Attachment embedding length ${embedding.length} does not match ${ATTACHMENT_EMBEDDING_DIMENSIONS}`
+    );
+  }
+}
+
+export function assertAttachmentEmbeddingsDimensions(embeddings: number[][]) {
+  for (const embedding of embeddings) {
+    assertAttachmentEmbeddingDimensions(embedding);
   }
 }

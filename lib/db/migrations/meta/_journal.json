@@ -15,6 +15,13 @@
       "when": 1775043823860,
       "tag": "0001_smart_stick",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1775103445668,
+      "tag": "0002_productive_the_fury",
+      "breakpoints": true
     }
   ]
 }

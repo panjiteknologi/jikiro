@@ -27,6 +27,7 @@ import { getWeather } from "@/lib/ai/tools/get-weather";
 import { requestSuggestions } from "@/lib/ai/tools/request-suggestions";
 import { updateDocument } from "@/lib/ai/tools/update-document";
 import {
+  assertAttachmentEmbeddingDimensions,
   DOCUMENT_RETRIEVAL_LIMIT,
   isReadableDocumentMimeType,
 } from "@/lib/attachments";
@@ -210,6 +211,8 @@ async function injectRetrievedDocumentContext({
     model: getEmbeddingModel(),
     value: retrievalQuery,
   });
+
+  assertAttachmentEmbeddingDimensions(embedding);
 
   const retrievedChunks = await retrieveRelevantAttachmentChunks({
     attachmentIds: retrievalAttachmentIds,

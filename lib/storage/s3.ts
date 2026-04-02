@@ -171,7 +171,7 @@ export function getFileFromS3(key: string) {
   );
 }
 
-export async function getFileDataUrlFromS3(key: string) {
+export async function getFileBufferFromS3(key: string) {
   const object = await getFileFromS3(key);
 
   if (!object.Body) {
@@ -179,9 +179,19 @@ export async function getFileDataUrlFromS3(key: string) {
   }
 
   const body = await object.Body.transformToByteArray();
-  const contentType = object.ContentType ?? "application/octet-stream";
+  const stableBytes = Uint8Array.from(body);
 
-  return `data:${contentType};base64,${Buffer.from(body).toString("base64")}`;
+  return {
+    buffer: Buffer.from(stableBytes),
+    contentType: object.ContentType ?? "application/octet-stream",
+    metadata: object.Metadata,
+  };
+}
+
+export async function getFileDataUrlFromS3(key: string) {
+  const { buffer, contentType } = await getFileBufferFromS3(key);
+
+  return `data:${contentType};base64,${buffer.toString("base64")}`;
 }
 
 export async function deleteFileFromS3(key: string) {

@@ -1,3 +1,10 @@
+import {
+  FileSpreadsheet,
+  FileText,
+  FileType2,
+  FileUp,
+  FileWarning,
+} from "lucide-react";
 import Image from "next/image";
 import { getAttachmentStatusLabel } from "@/lib/attachments";
 import type { Attachment } from "@/lib/types";
@@ -15,6 +22,8 @@ export const PreviewAttachment = ({
 }) => {
   const { error, name, status, url, contentType } = attachment;
   const statusLabel = isUploading ? null : getAttachmentStatusLabel(status);
+  const filePreview = getFilePreviewMeta(contentType, name);
+  const FilePreviewIcon = filePreview.icon;
 
   return (
     <div
@@ -33,8 +42,13 @@ export const PreviewAttachment = ({
         />
       ) : (
         <div className="flex size-full flex-col items-center justify-center gap-1 px-2 text-center">
+          <div className="rounded-xl border border-border/40 bg-background/90 p-2 text-foreground shadow-sm">
+            <FilePreviewIcon
+              className={`size-6 ${filePreview.iconClassName}`}
+            />
+          </div>
           <div className="rounded-md border border-border/40 bg-background px-2 py-1 text-[10px] font-medium text-foreground">
-            File
+            {filePreview.label}
           </div>
           <div className="line-clamp-2 text-[10px] leading-tight text-muted-foreground">
             {name ?? "attachment"}
@@ -77,3 +91,53 @@ export const PreviewAttachment = ({
     </div>
   );
 };
+
+function getFilePreviewMeta(contentType?: string, name?: string) {
+  const extension = name?.split(".").at(-1)?.toUpperCase();
+
+  if (contentType === "application/pdf") {
+    return {
+      icon: FileText,
+      iconClassName: "text-rose-600",
+      label: "PDF",
+    };
+  }
+
+  if (
+    contentType === "text/csv" ||
+    contentType ===
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  ) {
+    return {
+      icon: FileSpreadsheet,
+      iconClassName: "text-emerald-600",
+      label: extension === "CSV" ? "CSV" : "XLSX",
+    };
+  }
+
+  if (
+    contentType === "text/plain" ||
+    contentType ===
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  ) {
+    return {
+      icon: FileType2,
+      iconClassName: "text-sky-600",
+      label: extension === "TXT" ? "TXT" : "DOCX",
+    };
+  }
+
+  if (contentType) {
+    return {
+      icon: FileUp,
+      iconClassName: "text-muted-foreground",
+      label: extension ?? "FILE",
+    };
+  }
+
+  return {
+    icon: FileWarning,
+    iconClassName: "text-amber-600",
+    label: "FILE",
+  };
+}

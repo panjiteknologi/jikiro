@@ -22,6 +22,7 @@ import type {
   AttachmentAssetStatus,
   SupportedAttachmentMimeType,
 } from "@/lib/attachments";
+import { assertAttachmentEmbeddingDimensions } from "@/lib/attachments";
 import { ChatbotError } from "../errors";
 import { generateUUID } from "../utils";
 import {
@@ -451,6 +452,10 @@ export async function replaceAttachmentChunks({
   userId: string;
 }) {
   try {
+    for (const chunk of chunks) {
+      assertAttachmentEmbeddingDimensions(chunk.embedding);
+    }
+
     await db.transaction(async (tx) => {
       await tx
         .delete(attachmentChunk)
@@ -630,6 +635,8 @@ export async function retrieveRelevantAttachmentChunks({
   userId: string;
 }) {
   try {
+    assertAttachmentEmbeddingDimensions(embedding);
+
     const distance = cosineDistance(attachmentChunk.embedding, embedding);
 
     return await db
