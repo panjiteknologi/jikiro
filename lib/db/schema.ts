@@ -19,6 +19,7 @@ import {
   ATTACHMENT_EMBEDDING_DIMENSIONS,
   SUPPORTED_ATTACHMENT_MIME_TYPES,
 } from "@/lib/attachments";
+import type { PlanSnapshot } from "@/lib/billing/types";
 import {
   billingIntervals,
   checkoutStatuses,
@@ -27,7 +28,6 @@ import {
   subscriptionStatuses,
   usageKinds,
 } from "@/lib/billing/types";
-import type { PlanSnapshot } from "@/lib/billing/types";
 
 export const user = pgTable("User", {
   id: uuid("id").primaryKey().notNull().defaultRandom(),
@@ -36,6 +36,7 @@ export const user = pgTable("User", {
   name: text("name"),
   emailVerified: boolean("emailVerified").notNull().default(false),
   image: text("image"),
+  selectedModelIds: json("selectedModelIds").$type<string[]>(),
   isAnonymous: boolean("isAnonymous").notNull().default(false),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),

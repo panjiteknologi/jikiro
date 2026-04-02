@@ -1,45 +1,91 @@
-import { chatModels, DEFAULT_CHAT_MODEL } from "@/lib/ai/models";
+import {
+  DEFAULT_CHAT_MODEL,
+  FREE_MODEL_IDS,
+  GUEST_MODEL_IDS,
+  getActiveModels,
+  getAllGatewayModels,
+} from "@/lib/ai/models";
 import type {
   AccessTier,
   BillingInterval,
   EffectiveEntitlements,
-  PlanSnapshot,
   PlanSlug,
+  PlanSnapshot,
 } from "@/lib/billing/types";
 
 const MEGABYTE = 1024 * 1024;
 
-const guestModelIds = [
-  DEFAULT_CHAT_MODEL,
-  "mistral/mistral-small",
-  "deepseek/deepseek-v3.2",
-] as const;
+export const PRO_SELECTION_LIMIT = 10;
 
-const freeModelIds = [
-  ...guestModelIds,
-  "openai/gpt-oss-20b",
-] as const;
+const guestModelIds = Array.from(new Set(GUEST_MODEL_IDS));
+const freeModelIds = Array.from(new Set(FREE_MODEL_IDS));
+const fallbackCatalogModelIds = getActiveModels().map((model) => model.id);
+const guestModelIdSet = new Set<string>(guestModelIds);
+const freeModelIdSet = new Set<string>(freeModelIds);
 
-const proModelIds = [
-  ...freeModelIds,
-  "mistral/codestral",
-  "moonshotai/kimi-k2.5",
-  "openai/gpt-oss-120b",
-] as const;
+function uniqueModelIds(modelIds: Iterable<string>) {
+  return Array.from(new Set(modelIds));
+}
 
-const maxModelIds = chatModels.map((model) => model.id);
+function getSyncEligibleModelIds(tier: AccessTier) {
+  switch (tier) {
+    case "guest":
+      return guestModelIds;
+    case "free":
+      return freeModelIds;
+    case "pro":
+    case "max":
+      return uniqueModelIds([...freeModelIds, ...fallbackCatalogModelIds]);
+    default:
+      return freeModelIds;
+  }
+}
 
-type TierDefinition = Omit<EffectiveEntitlements, "tier">;
+function getDefaultAllowedModelIdsForTier({
+  eligibleModelIds,
+  tier,
+}: {
+  eligibleModelIds: string[];
+  tier: AccessTier;
+}) {
+  switch (tier) {
+    case "guest":
+      return eligibleModelIds.filter((modelId) => guestModelIdSet.has(modelId));
+    case "free":
+      return eligibleModelIds.filter((modelId) => freeModelIdSet.has(modelId));
+    case "pro":
+      return eligibleModelIds.slice(0, PRO_SELECTION_LIMIT);
+    case "max":
+      return eligibleModelIds;
+    default:
+      return eligibleModelIds;
+  }
+}
+
+export function getSelectionLimitForTier(tier: AccessTier) {
+  switch (tier) {
+    case "pro":
+      return PRO_SELECTION_LIMIT;
+    case "max":
+      return null;
+    default:
+      return null;
+  }
+}
+
+type TierDefinition = Omit<
+  EffectiveEntitlements,
+  "allowedModelIds" | "defaultModelId" | "tier"
+>;
 
 const tierDefinitions: Record<AccessTier, TierDefinition> = {
   guest: {
-    allowedModelIds: [...guestModelIds],
     attachmentLimits: {
       maxDocumentSizeBytes: 10 * MEGABYTE,
       maxFilesPerChat: 2,
       maxImageSizeBytes: 3 * MEGABYTE,
     },
-    defaultModelId: DEFAULT_CHAT_MODEL,
+    catalogSource: "gateway",
     features: {
       integrations: 0,
       projects: false,
@@ -47,15 +93,15 @@ const tierDefinitions: Record<AccessTier, TierDefinition> = {
     },
     includedCredits: null,
     maxMessagesPerHour: 10,
+    selectionLimit: null,
   },
   free: {
-    allowedModelIds: [...freeModelIds],
     attachmentLimits: {
       maxDocumentSizeBytes: 15 * MEGABYTE,
       maxFilesPerChat: 4,
       maxImageSizeBytes: 5 * MEGABYTE,
     },
-    defaultModelId: DEFAULT_CHAT_MODEL,
+    catalogSource: "gateway",
     features: {
       integrations: 0,
       projects: false,
@@ -63,40 +109,60 @@ const tierDefinitions: Record<AccessTier, TierDefinition> = {
     },
     includedCredits: 100,
     maxMessagesPerHour: 30,
+    selectionLimit: null,
   },
   pro: {
-    allowedModelIds: [...proModelIds],
     attachmentLimits: {
       maxDocumentSizeBytes: 25 * MEGABYTE,
       maxFilesPerChat: 8,
       maxImageSizeBytes: 10 * MEGABYTE,
     },
-    defaultModelId: "moonshotai/kimi-k2.5",
+    catalogSource: "gateway",
     features: {
       integrations: 3,
       projects: true,
       videoGeneration: false,
     },
-    includedCredits: 1_500,
+    includedCredits: 1500,
     maxMessagesPerHour: 120,
+    selectionLimit: PRO_SELECTION_LIMIT,
   },
   max: {
-    allowedModelIds: [...maxModelIds],
     attachmentLimits: {
       maxDocumentSizeBytes: 40 * MEGABYTE,
       maxFilesPerChat: 12,
       maxImageSizeBytes: 20 * MEGABYTE,
     },
-    defaultModelId: "xai/grok-4.1-fast-non-reasoning",
+    catalogSource: "gateway",
     features: {
       integrations: 10,
       projects: true,
       videoGeneration: true,
     },
-    includedCredits: 5_000,
+    includedCredits: 5000,
     maxMessagesPerHour: 300,
+    selectionLimit: null,
   },
 };
+
+function buildEntitlements({
+  allowedModelIds,
+  tier,
+}: {
+  allowedModelIds: string[];
+  tier: AccessTier;
+}): EffectiveEntitlements {
+  const definition = tierDefinitions[tier];
+  const resolvedModelIds = uniqueModelIds(allowedModelIds);
+  const defaultModelId = getFallbackModelId(resolvedModelIds);
+
+  return {
+    ...definition,
+    allowedModelIds: resolvedModelIds,
+    defaultModelId,
+    tier,
+  };
+}
 
 type PaidPlanOffer = {
   interval: BillingInterval;
@@ -127,7 +193,7 @@ const planDefinitions: Record<PlanSlug, PlanDefinition> = {
     offers: freePlanOffers,
   },
   pro: {
-    description: "Higher-quality models and more workspace headroom.",
+    description: "Choose your own working set of stronger models.",
     name: "Pro",
     offers: {
       monthly: {
@@ -141,7 +207,7 @@ const planDefinitions: Record<PlanSlug, PlanDefinition> = {
     },
   },
   max: {
-    description: "Full access to flagship models and the biggest limits.",
+    description: "Pick from the full eligible catalog with the biggest limits.",
     name: "Max",
     offers: {
       monthly: {
@@ -158,13 +224,60 @@ const planDefinitions: Record<PlanSlug, PlanDefinition> = {
 
 export const paidPlanSlugs: PlanSlug[] = ["pro", "max"];
 
-export function getEntitlementsForTier(tier: AccessTier): EffectiveEntitlements {
-  const definition = tierDefinitions[tier];
+export function getEntitlementsForTier(
+  tier: AccessTier
+): EffectiveEntitlements {
+  const eligibleModelIds = getSyncEligibleModelIds(tier);
 
-  return {
-    ...definition,
+  return buildEntitlements({
+    allowedModelIds: getDefaultAllowedModelIdsForTier({
+      eligibleModelIds,
+      tier,
+    }),
     tier,
-  };
+  });
+}
+
+export async function resolveEntitlementsForTier({
+  selectedModelIds,
+  tier,
+}: {
+  selectedModelIds?: string[] | null;
+  tier: AccessTier;
+}): Promise<EffectiveEntitlements> {
+  const catalog = await getAllGatewayModels();
+  const catalogModelIds = catalog.map((model) => model.id);
+
+  const eligibleModelIds =
+    tier === "guest"
+      ? catalogModelIds.filter((modelId) => guestModelIdSet.has(modelId))
+      : tier === "free"
+        ? catalogModelIds.filter((modelId) => freeModelIdSet.has(modelId))
+        : catalogModelIds;
+
+  const selectionLimit = getSelectionLimitForTier(tier);
+  const sanitizedSelectedModelIds =
+    tier === "pro" || tier === "max"
+      ? uniqueModelIds(selectedModelIds ?? []).filter((modelId) =>
+          eligibleModelIds.includes(modelId)
+        )
+      : [];
+  const limitedSelectedModelIds =
+    typeof selectionLimit === "number"
+      ? sanitizedSelectedModelIds.slice(0, selectionLimit)
+      : sanitizedSelectedModelIds;
+  const allowedModelIds =
+    limitedSelectedModelIds.length > 0
+      ? limitedSelectedModelIds
+      : getDefaultAllowedModelIdsForTier({
+          eligibleModelIds,
+          tier,
+        });
+
+  return buildEntitlements({
+    allowedModelIds,
+    tier,
+  });
 }
 
 export function getPlanDefinition(planSlug: PlanSlug) {

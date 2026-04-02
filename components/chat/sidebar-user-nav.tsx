@@ -1,5 +1,11 @@
 "use client";
 
+import { ChevronUp } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import type { User } from "next-auth";
+import { signOut, useSession } from "next-auth/react";
+import { useTheme } from "next-themes";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -14,11 +20,6 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { guestRegex } from "@/lib/constants";
-import { ChevronUp } from "lucide-react";
-import type { User } from "next-auth";
-import { signOut, useSession } from "next-auth/react";
-import { useTheme } from "next-themes";
-import { useRouter } from "next/navigation";
 import { LoaderIcon } from "./icons";
 import { toast } from "./toast";
 
@@ -102,6 +103,15 @@ export function SidebarUserNav({ user }: { user: User }) {
             >
               {`Toggle ${resolvedTheme === "light" ? "dark" : "light"} mode`}
             </DropdownMenuItem>
+            {isGuest ? null : (
+              <DropdownMenuItem
+                asChild
+                className="cursor-pointer text-[13px]"
+                data-testid="user-nav-item-model-settings"
+              >
+                <Link href="/settings/models">Model settings</Link>
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild data-testid="user-nav-item-auth">
               <button

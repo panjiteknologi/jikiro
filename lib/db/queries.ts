@@ -41,13 +41,102 @@ import {
 } from "./schema";
 import { generateHashedPassword } from "./utils";
 
+const legacyUserSelection = {
+  createdAt: user.createdAt,
+  email: user.email,
+  emailVerified: user.emailVerified,
+  id: user.id,
+  image: user.image,
+  isAnonymous: user.isAnonymous,
+  name: user.name,
+  password: user.password,
+  selectedModelIds: sql<string[] | null>`null`.as("selectedModelIds"),
+  updatedAt: user.updatedAt,
+};
+
+function isMissingSelectedModelIdsColumn(error: unknown) {
+  return (
+    error instanceof Error &&
+    /selectedModelIds|column .*selectedModelIds/i.test(error.message)
+  );
+}
+
 export async function getUser(email: string): Promise<User[]> {
   try {
     return await db.select().from(user).where(eq(user.email, email));
-  } catch (_error) {
+  } catch (error) {
+    if (isMissingSelectedModelIdsColumn(error)) {
+      const rows = await db
+        .select(legacyUserSelection)
+        .from(user)
+        .where(eq(user.email, email));
+
+      return rows as User[];
+    }
+
     throw new ChatbotError(
       "bad_request:database",
       "Failed to get user by email"
+    );
+  }
+}
+
+export async function getUserById({ userId }: { userId: string }) {
+  try {
+    const [row] = await db
+      .select()
+      .from(user)
+      .where(eq(user.id, userId))
+      .limit(1);
+
+    return row ?? null;
+  } catch (error) {
+    if (isMissingSelectedModelIdsColumn(error)) {
+      const [row] = await db
+        .select(legacyUserSelection)
+        .from(user)
+        .where(eq(user.id, userId))
+        .limit(1);
+
+      return (row as User | undefined) ?? null;
+    }
+
+    throw new ChatbotError("bad_request:database", "Failed to get user by id");
+  }
+}
+
+export async function updateUserSelectedModelIds({
+  selectedModelIds,
+  userId,
+}: {
+  selectedModelIds: string[] | null;
+  userId: string;
+}) {
+  try {
+    const [updated] = await db
+      .update(user)
+      .set({
+        selectedModelIds,
+        updatedAt: new Date(),
+      })
+      .where(eq(user.id, userId))
+      .returning({
+        id: user.id,
+        selectedModelIds: user.selectedModelIds,
+      });
+
+    return updated ?? null;
+  } catch (error) {
+    if (isMissingSelectedModelIdsColumn(error)) {
+      throw new ChatbotError(
+        "bad_request:billing",
+        "Custom model settings need the latest database migration. Run pnpm db:migrate first."
+      );
+    }
+
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to update user selected models"
     );
   }
 }

@@ -30,10 +30,18 @@ test.describe("Billing Page", () => {
       ])
     );
   });
+
+  test("redirects guests away from model settings", async ({ page }) => {
+    await page.goto("/settings/models");
+
+    await expect(page).toHaveURL("/login");
+  });
 });
 
 test.describe("Tier model gating", () => {
-  test("guest/free session receives only guest-safe models", async ({ page }) => {
+  test("guest/free session receives only guest-safe models", async ({
+    page,
+  }) => {
     await page.goto("/");
 
     const modelPayload = await page.evaluate(async () => {
@@ -45,11 +53,12 @@ test.describe("Tier model gating", () => {
       expect.arrayContaining([
         expect.objectContaining({ id: "deepseek/deepseek-v3.2" }),
         expect.objectContaining({ id: "mistral/mistral-small" }),
-        expect.objectContaining({ id: "moonshotai/kimi-k2-0905" }),
+        expect.objectContaining({ id: "openai/gpt-5-nano" }),
       ])
     );
     expect(modelPayload.models).not.toEqual(
       expect.arrayContaining([
+        expect.objectContaining({ id: "moonshotai/kimi-k2-0905" }),
         expect.objectContaining({ id: "xai/grok-4.1-fast-non-reasoning" }),
       ])
     );

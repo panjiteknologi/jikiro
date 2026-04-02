@@ -3,29 +3,34 @@ import { ATTACHMENT_EMBEDDING_MODEL_ID } from "@/lib/attachments";
 import { isTestEnvironment } from "../constants";
 import { titleModel } from "./models";
 
-export const myProvider = isTestEnvironment
+const testModels = isTestEnvironment
   ? (() => {
       const { chatModel, titleModel } = require("./models.mock");
-      return customProvider({
-        languageModels: {
-          "chat-model": chatModel,
-          "title-model": titleModel,
-        },
-      });
+      return { chatModel, titleModel };
     })()
   : null;
 
+export const myProvider =
+  isTestEnvironment && testModels
+    ? customProvider({
+        languageModels: {
+          "chat-model": testModels.chatModel,
+          "title-model": testModels.titleModel,
+        },
+      })
+    : null;
+
 export function getLanguageModel(modelId: string) {
-  if (isTestEnvironment && myProvider) {
-    return myProvider.languageModel(modelId);
+  if (isTestEnvironment && testModels) {
+    return testModels.chatModel;
   }
 
   return gateway.languageModel(modelId);
 }
 
 export function getTitleModel() {
-  if (isTestEnvironment && myProvider) {
-    return myProvider.languageModel("title-model");
+  if (isTestEnvironment && testModels) {
+    return testModels.titleModel;
   }
   return gateway.languageModel(titleModel.id);
 }

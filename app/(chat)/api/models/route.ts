@@ -1,17 +1,14 @@
 import { auth } from "@/app/(auth)/auth";
-import { getEntitlementsForTier } from "@/lib/billing/plans";
+import { getAllGatewayModels } from "@/lib/ai/models";
+import { resolveEntitlementsForTier } from "@/lib/billing/plans";
 import { resolveBillingState } from "@/lib/billing/service";
-import { chatModels, getCapabilities } from "@/lib/ai/models";
 
 export async function GET() {
   const headers = {
-    "Cache-Control": "public, max-age=86400, s-maxage=86400",
+    "Cache-Control": "private, no-store",
   };
 
-  const [curatedCapabilities, session] = await Promise.all([
-    getCapabilities(),
-    auth(),
-  ]);
+  const [catalog, session] = await Promise.all([getAllGatewayModels(), auth()]);
   const entitlements =
     session?.user?.id && session.user.type
       ? (
@@ -20,12 +17,15 @@ export async function GET() {
             userType: session.user.type,
           })
         ).entitlements
-      : getEntitlementsForTier("guest");
-  const allowedModels = chatModels.filter((model) =>
+      : await resolveEntitlementsForTier({ tier: "guest" });
+  const allowedModelsWithCapabilities = catalog.filter((model) =>
     entitlements.allowedModelIds.includes(model.id)
   );
   const capabilities = Object.fromEntries(
-    allowedModels.map((model) => [model.id, curatedCapabilities[model.id]])
+    allowedModelsWithCapabilities.map((model) => [model.id, model.capabilities])
+  );
+  const allowedModels = allowedModelsWithCapabilities.map(
+    ({ capabilities: _capabilities, ...model }) => model
   );
 
   return Response.json({ capabilities, models: allowedModels }, { headers });

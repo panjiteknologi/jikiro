@@ -3,15 +3,22 @@ import "server-only";
 import { addMonths, addYears, formatISO } from "date-fns";
 import type { UserType } from "@/app/(auth)/auth";
 import {
+  FREE_MODEL_IDS,
+  type GatewayModelWithCapabilities,
+  getAllGatewayModels,
+  isBlockedModelId,
+} from "@/lib/ai/models";
+import {
   convertMicrosToCredits,
   estimateCreditsFromEmbeddingUsage,
   estimateCreditsFromLanguageUsage,
 } from "@/lib/billing/credits";
 import {
   getDisplayPlans,
-  getEntitlementsForTier,
   getPlanSnapshot,
+  getSelectionLimitForTier,
   isPaidPlan,
+  resolveEntitlementsForTier,
 } from "@/lib/billing/plans";
 import type {
   EffectiveEntitlements,
@@ -27,12 +34,23 @@ import {
   resetAndGrantCreditsForCycle,
   saveSubscription,
 } from "@/lib/db/billing-queries";
+import { getUserById, updateUserSelectedModelIds } from "@/lib/db/queries";
 import type { Subscription } from "@/lib/db/schema";
+import { ChatbotError } from "@/lib/errors";
 
 type ResolvedBillingState = {
   entitlements: EffectiveEntitlements;
   remainingCredits: number | null;
   subscription: Subscription | null;
+};
+
+export type ModelSettingsData = {
+  catalogSource: "gateway";
+  eligibleModels: GatewayModelWithCapabilities[];
+  freeModelIds: string[];
+  selectedModelIds: string[];
+  selectionLimit: number | null;
+  tier: Exclude<EffectiveEntitlements["tier"], "guest">;
 };
 
 function addBillingInterval(start: Date, interval: "monthly" | "yearly") {
@@ -102,7 +120,9 @@ async function ensureCreditsForCurrentCycle({
   subscription,
   userId,
 }: {
-  subscription: NonNullable<Awaited<ReturnType<typeof getSubscriptionByUserId>>>;
+  subscription: NonNullable<
+    Awaited<ReturnType<typeof getSubscriptionByUserId>>
+  >;
   userId: string;
 }) {
   const includedCredits = subscription.planSnapshot.includedCredits;
@@ -134,7 +154,7 @@ export async function resolveBillingState({
 }): Promise<ResolvedBillingState> {
   if (userType === "guest") {
     return {
-      entitlements: getEntitlementsForTier("guest"),
+      entitlements: await resolveEntitlementsForTier({ tier: "guest" }),
       remainingCredits: null,
       subscription: null,
     };
@@ -144,21 +164,26 @@ export async function resolveBillingState({
 
   if (!activeSubscription) {
     return {
-      entitlements: getEntitlementsForTier("free"),
+      entitlements: await resolveEntitlementsForTier({ tier: "free" }),
       remainingCredits: 0,
       subscription: null,
     };
   }
 
-  await ensureCreditsForCurrentCycle({
-    subscription: activeSubscription,
-    userId,
-  });
-
+  const [userRecord] = await Promise.all([
+    getUserById({ userId }),
+    ensureCreditsForCurrentCycle({
+      subscription: activeSubscription,
+      userId,
+    }),
+  ]);
   const remainingCredits = await getUserCreditBalance({ userId });
 
   return {
-    entitlements: getEntitlementsForTier(activeSubscription.planSlug),
+    entitlements: await resolveEntitlementsForTier({
+      selectedModelIds: userRecord?.selectedModelIds ?? null,
+      tier: activeSubscription.planSlug,
+    }),
     remainingCredits,
     subscription: activeSubscription,
   };
@@ -190,6 +215,143 @@ export async function getBillingPageData({
   };
 }
 
+function arraysEqual(left: string[], right: string[]) {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
+  );
+}
+
+function getEligibleModelsForTier({
+  catalog,
+  tier,
+}: {
+  catalog: GatewayModelWithCapabilities[];
+  tier: EffectiveEntitlements["tier"];
+}) {
+  if (tier === "free") {
+    return catalog.filter((model) =>
+      FREE_MODEL_IDS.includes(model.id as (typeof FREE_MODEL_IDS)[number])
+    );
+  }
+
+  if (tier === "pro" || tier === "max") {
+    return catalog;
+  }
+
+  return [];
+}
+
+export async function getModelSettingsData({
+  userId,
+  userType,
+}: {
+  userId: string;
+  userType: UserType;
+}): Promise<ModelSettingsData> {
+  if (userType === "guest") {
+    throw new ChatbotError("forbidden:billing");
+  }
+
+  const [billingState, catalog] = await Promise.all([
+    resolveBillingState({ userId, userType }),
+    getAllGatewayModels(),
+  ]);
+  const tier = billingState.entitlements.tier as ModelSettingsData["tier"];
+  const eligibleModels = getEligibleModelsForTier({
+    catalog,
+    tier,
+  });
+
+  return {
+    catalogSource: "gateway",
+    eligibleModels,
+    freeModelIds: eligibleModels
+      .map((model) => model.id)
+      .filter((modelId) =>
+        FREE_MODEL_IDS.includes(modelId as (typeof FREE_MODEL_IDS)[number])
+      ),
+    selectedModelIds: billingState.entitlements.allowedModelIds,
+    selectionLimit: billingState.entitlements.selectionLimit,
+    tier,
+  };
+}
+
+export async function updateModelSettingsSelection({
+  selectedModelIds,
+  userId,
+  userType,
+}: {
+  selectedModelIds: string[];
+  userId: string;
+  userType: UserType;
+}) {
+  if (userType === "guest") {
+    throw new ChatbotError("forbidden:billing");
+  }
+
+  const billingState = await resolveBillingState({ userId, userType });
+  const tier = billingState.entitlements.tier;
+
+  if (tier !== "pro" && tier !== "max") {
+    throw new ChatbotError("forbidden:billing");
+  }
+
+  const catalog = await getAllGatewayModels();
+  const eligibleModels = getEligibleModelsForTier({ catalog, tier });
+  const eligibleModelIds = eligibleModels.map((model) => model.id);
+  const requestedModelIds = Array.from(new Set(selectedModelIds.map(String)));
+  const selectionLimit = getSelectionLimitForTier(tier);
+
+  if (requestedModelIds.length === 0) {
+    throw new ChatbotError("bad_request:billing", "Select at least one model.");
+  }
+
+  if (requestedModelIds.some((modelId) => isBlockedModelId(modelId))) {
+    throw new ChatbotError(
+      "bad_request:billing",
+      "Blocked models cannot be selected."
+    );
+  }
+
+  if (
+    requestedModelIds.some((modelId) => !eligibleModelIds.includes(modelId))
+  ) {
+    throw new ChatbotError(
+      "bad_request:billing",
+      "One or more selected models are unavailable for your plan."
+    );
+  }
+
+  if (
+    typeof selectionLimit === "number" &&
+    requestedModelIds.length > selectionLimit
+  ) {
+    throw new ChatbotError(
+      "bad_request:billing",
+      `You can select up to ${selectionLimit} models on this plan.`
+    );
+  }
+
+  const orderedSelectedModelIds = eligibleModelIds.filter((modelId) =>
+    requestedModelIds.includes(modelId)
+  );
+  const defaultEntitlements = await resolveEntitlementsForTier({ tier });
+  const selectedModelIdsToStore = arraysEqual(
+    orderedSelectedModelIds,
+    defaultEntitlements.allowedModelIds
+  )
+    ? null
+    : orderedSelectedModelIds;
+
+  await updateUserSelectedModelIds({
+    selectedModelIds: selectedModelIdsToStore,
+    userId,
+  });
+
+  return getModelSettingsData({ userId, userType });
+}
+
 export async function activateSubscriptionFromCheckout({
   checkoutId,
   interval,
@@ -204,7 +366,9 @@ export async function activateSubscriptionFromCheckout({
   const existing = await getSubscriptionByUserId({ userId });
   const now = new Date();
   const currentPeriodStart =
-    existing && existing.planSlug === planSlug && existing.currentPeriodEnd > now
+    existing &&
+    existing.planSlug === planSlug &&
+    existing.currentPeriodEnd > now
       ? existing.currentPeriodEnd
       : now;
   const currentPeriodEnd = addBillingInterval(currentPeriodStart, interval);

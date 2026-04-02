@@ -1,5 +1,11 @@
 "use client";
 
+import { Crown, Sparkles, Zap } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import type { ReactNode } from "react";
+import { startTransition, useState } from "react";
+import { toast } from "sonner";
 import { createTripayCheckout } from "@/app/billing/actions";
 import Pricing, {
   type Plans,
@@ -13,11 +19,6 @@ import type {
   PlanSnapshot,
 } from "@/lib/billing/types";
 import type { BillingCheckout, Subscription } from "@/lib/db/schema";
-import { Crown, Sparkles, Zap } from "lucide-react";
-import { useRouter } from "next/navigation";
-import type { ReactNode } from "react";
-import { startTransition, useState } from "react";
-import { toast } from "sonner";
 
 type DisplayPlan = {
   description: string;
@@ -40,6 +41,7 @@ type BillingDashboardProps = {
   isGuest: boolean;
   recentCheckouts: BillingCheckout[];
   remainingCredits: number | null;
+  showManageModels: boolean;
   subscription: Subscription | null;
   tripayConfigured: boolean;
 };
@@ -103,6 +105,12 @@ function getPlanFeatures(plan: DisplayPlan) {
   const documentSizeMb = Math.round(
     plan.entitlements.attachmentLimits.maxDocumentSizeBytes / (1024 * 1024)
   );
+  const modelAccessLabel =
+    plan.planSlug === "free"
+      ? "5 available AI models"
+      : plan.planSlug === "pro"
+        ? "Custom model access (up to 10)"
+        : "Custom model access (all eligible models)";
 
   return [
     `${
@@ -110,7 +118,7 @@ function getPlanFeatures(plan: DisplayPlan) {
         ? "Limited guest AI credits"
         : `${plan.entitlements.includedCredits.toLocaleString("en-US")} AI credits per cycle`
     }`,
-    `${plan.entitlements.allowedModelIds.length} available AI models`,
+    modelAccessLabel,
     `Up to ${plan.entitlements.attachmentLimits.maxFilesPerChat} attachments per chat`,
     `Document uploads up to ${documentSizeMb} MB`,
     plan.entitlements.features.projects
@@ -206,6 +214,7 @@ export function BillingDashboard({
   displayPlans,
   isGuest,
   remainingCredits,
+  showManageModels,
   tripayConfigured,
 }: BillingDashboardProps) {
   const router = useRouter();
@@ -304,5 +313,20 @@ export function BillingDashboard({
     target: getPlanTarget(plan.planSlug),
   }));
 
-  return <Pricing backHref="/" plans={plans} />;
+  return (
+    <Pricing
+      backHref="/"
+      headerAction={
+        showManageModels ? (
+          <Link
+            className="inline-flex items-center rounded-lg border border-border bg-input/30 px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-input/50"
+            href="/settings/models"
+          >
+            Manage models
+          </Link>
+        ) : null
+      }
+      plans={plans}
+    />
+  );
 }

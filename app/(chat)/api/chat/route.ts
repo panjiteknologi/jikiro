@@ -15,9 +15,9 @@ import { after } from "next/server";
 import { createResumableStreamContext } from "resumable-stream";
 import { auth, type UserType } from "@/app/(auth)/auth";
 import {
-  chatModels,
   DEFAULT_CHAT_MODEL,
   getCapabilities,
+  getGatewayModelById,
 } from "@/lib/ai/models";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
 import { getEmbeddingModel, getLanguageModel } from "@/lib/ai/providers";
@@ -43,9 +43,9 @@ import {
 import { convertUsdToMicros } from "@/lib/billing/credits";
 import { getFallbackModelId } from "@/lib/billing/plans";
 import {
+  type ResolvedBillingState,
   recordAiUsage,
   resolveBillingState,
-  type ResolvedBillingState,
 } from "@/lib/billing/service";
 import { isProductionEnvironment } from "@/lib/constants";
 import {
@@ -331,8 +331,8 @@ export async function POST(request: Request) {
     const allowedModelIds = new Set(billingState.entitlements.allowedModelIds);
     const chatModel = allowedModelIds.has(selectedChatModel)
       ? selectedChatModel
-      : getFallbackModelId(billingState.entitlements.allowedModelIds) ??
-        DEFAULT_CHAT_MODEL;
+      : (getFallbackModelId(billingState.entitlements.allowedModelIds) ??
+        DEFAULT_CHAT_MODEL);
 
     if (
       billingState.remainingCredits !== null &&
@@ -433,8 +433,10 @@ export async function POST(request: Request) {
       });
     }
 
-    const modelConfig = chatModels.find((m) => m.id === chatModel);
-    const modelCapabilities = await getCapabilities();
+    const [modelConfig, modelCapabilities] = await Promise.all([
+      getGatewayModelById(chatModel),
+      getCapabilities(),
+    ]);
     const capabilities = modelCapabilities[chatModel];
     const isReasoningModel = capabilities?.reasoning === true;
     const supportsTools = capabilities?.tools === true;
@@ -569,14 +571,16 @@ export async function POST(request: Request) {
                 generationId,
                 modelId: chatModel,
                 promptTokens:
-                  generationLookup?.promptTokens ?? event.totalUsage.inputTokens,
+                  generationLookup?.promptTokens ??
+                  event.totalUsage.inputTokens,
                 providerMetadata: event.providerMetadata,
                 providerName:
                   generationLookup?.providerName ?? chatModel.split("/")[0],
                 reasoningTokens:
                   generationLookup?.reasoningTokens ??
                   event.totalUsage.reasoningTokens,
-                responseBody: generationLookup?.raw ?? event.response.body ?? null,
+                responseBody:
+                  generationLookup?.raw ?? event.response.body ?? null,
                 totalTokens:
                   generationLookup?.totalTokens ?? event.totalUsage.totalTokens,
                 usageKind: "chat_generation",

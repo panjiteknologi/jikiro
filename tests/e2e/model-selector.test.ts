@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
-const MODEL_BUTTON_REGEX = /Kimi|Codestral|Mistral|DeepSeek|GPT|Grok/i;
+const MODEL_BUTTON_REGEX =
+  /Claude|Codestral|Gemini|Mistral|DeepSeek|GPT|MiniMax|Grok/i;
 
 test.describe("Model Selector", () => {
   test.beforeEach(async ({ page }) => {
@@ -61,7 +62,8 @@ test.describe("Model Selector", () => {
 
     await expect(page.getByText("DeepSeek V3.2").first()).toBeVisible();
     await expect(page.getByText("Mistral Small").first()).toBeVisible();
-    await expect(page.getByText("Kimi K2 0905").first()).toBeVisible();
+    await expect(page.getByText("GPT-5 Nano").first()).toBeVisible();
+    await expect(page.getByText("Kimi K2 0905")).toHaveCount(0);
   });
 
   test("can select a different model", async ({ page }) => {

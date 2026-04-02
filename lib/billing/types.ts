@@ -50,13 +50,17 @@ export type AttachmentEntitlements = {
   maxImageSizeBytes: number;
 };
 
+export type ModelCatalogSource = "gateway";
+
 export type EffectiveEntitlements = {
   allowedModelIds: string[];
   attachmentLimits: AttachmentEntitlements;
+  catalogSource: ModelCatalogSource;
   defaultModelId: string;
   features: PlanFeatureFlags;
   includedCredits: number | null;
   maxMessagesPerHour: number;
+  selectionLimit: number | null;
   tier: AccessTier;
 };
 
