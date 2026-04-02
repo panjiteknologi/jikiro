@@ -13,6 +13,7 @@ import {
   SidebarGroupContent,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
@@ -22,8 +23,10 @@ import {
 import Jikiro from '@/public/svg/jikiro';
 import {
   CreditCardIcon,
+  FolderOpen,
   PanelLeftIcon,
   PenSquareIcon,
+  Plus,
   TrashIcon
 } from "lucide-react";
 import type { User } from "next-auth";
@@ -107,17 +110,35 @@ export function AppSidebar({ user }: { user: User | undefined }) {
               <SidebarMenu>
                 <SidebarMenuItem>
                   <SidebarMenuButton
-                    className="h-8 rounded-lg border border-sidebar-border text-[13px] text-sidebar-foreground/70 transition-colors duration-150 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                    className="h-8 rounded-md bg-primary/5 text-[13px] text-sidebar-foreground/70 transition-colors duration-150 hover:bg-sidebar-accent/50 hover:text-primary"
                     onClick={() => {
                       setOpenMobile(false);
                       router.push("/");
                     }}
                     tooltip="New Chat"
                   >
-                    <PenSquareIcon className="size-4" />
-                    <span className="font-medium">New chat</span>
+                    <PenSquareIcon className="size-4 text-primary" />
+                    <span className="font-medium text-primary">New chat</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
+                {user && (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton 
+                      asChild 
+                      tooltip="Projects"
+                      className="rounded-lg text-sidebar-foreground/40 transition-colors duration-150 hover:bg-primary/10 hover:text-primary"
+                    >
+                      <Link href="/projects" onClick={() => setOpenMobile(false)}>
+                        <FolderOpen className="size-4" />
+                        <span className="text-[13px]">Projects</span>
+                      </Link>
+                    </SidebarMenuButton>
+
+                    <SidebarMenuAction>
+                      <Plus className="size-4" />
+                    </SidebarMenuAction>
+                  </SidebarMenuItem>
+                )}
                 {user && (
                   <SidebarMenuItem>
                     <SidebarMenuButton
