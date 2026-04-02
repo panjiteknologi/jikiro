@@ -662,8 +662,9 @@ export async function retrieveRelevantAttachmentChunks({
   try {
     assertAttachmentEmbeddingDimensions(embedding);
 
+    const embeddingVector = JSON.stringify(embedding);
     const distance =
-      sql<number>`${attachmentChunk.embedding} <=> ${embedding}`.as(
+      sql<number>`${attachmentChunk.embedding} <=> ${sql`${embeddingVector}::vector`}`.as(
         "distance"
       );
 

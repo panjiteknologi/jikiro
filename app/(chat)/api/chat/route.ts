@@ -6,6 +6,7 @@ import {
   createUIMessageStreamResponse,
   embed,
   generateId,
+  pruneMessages,
   stepCountIs,
   streamText,
 } from "ai";
@@ -437,6 +438,8 @@ export async function POST(request: Request) {
     const capabilities = modelCapabilities[chatModel];
     const isReasoningModel = capabilities?.reasoning === true;
     const supportsTools = capabilities?.tools === true;
+    const requiresStrictStringMessageContent =
+      chatModel.startsWith("moonshotai/");
 
     const resolvedMessages = await resolvePrivateFilePartsForModel({
       messages: uiMessages,
@@ -453,6 +456,55 @@ export async function POST(request: Request) {
           userType,
         });
     const modelMessages = await convertToModelMessages(modelReadyMessages);
+    const prunedModelMessages = requiresStrictStringMessageContent
+      ? pruneMessages({
+          messages: modelMessages,
+          reasoning: "all",
+          toolCalls: "all",
+        })
+      : modelMessages;
+
+    const sanitizedModelMessages = prunedModelMessages
+      .map((modelMessage) => {
+        if (!Array.isArray(modelMessage.content)) {
+          return modelMessage;
+        }
+
+        if (modelMessage.role === "assistant") {
+          const content = isReasoningModel
+            ? modelMessage.content
+            : modelMessage.content.filter((part) => part.type !== "reasoning");
+
+          if (content.every((part) => part.type === "text")) {
+            return {
+              ...modelMessage,
+              content: content.map((part) => part.text).join(""),
+            };
+          }
+
+          if (content.length === 0) {
+            return null;
+          }
+
+          return {
+            ...modelMessage,
+            content,
+          };
+        }
+
+        if (
+          modelMessage.role === "user" &&
+          modelMessage.content.every((part) => part.type === "text")
+        ) {
+          return {
+            ...modelMessage,
+            content: modelMessage.content.map((part) => part.text).join(""),
+          };
+        }
+
+        return modelMessage;
+      })
+      .filter((message) => message !== null);
 
     const stream = createUIMessageStream({
       originalMessages: isToolApprovalFlow ? uiMessages : undefined,
@@ -461,7 +513,7 @@ export async function POST(request: Request) {
           abortSignal: request.signal,
           model: getLanguageModel(chatModel),
           system: systemPrompt({ requestHints, supportsTools }),
-          messages: modelMessages,
+          messages: sanitizedModelMessages,
           stopWhen: stepCountIs(5),
           experimental_activeTools:
             isReasoningModel && !supportsTools

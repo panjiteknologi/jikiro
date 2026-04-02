@@ -1,12 +1,3 @@
-import mammoth from "mammoth";
-import Papa from "papaparse";
-import {
-  getDocument,
-  type PDFPageProxy,
-  VerbosityLevel,
-} from "pdfjs-dist/legacy/build/pdf.mjs";
-import { WorkerMessageHandler } from "pdfjs-dist/legacy/build/pdf.worker.mjs";
-import { read, utils } from "xlsx";
 import {
   DOCUMENT_CHUNK_OVERLAP,
   DOCUMENT_CHUNK_SIZE,
@@ -15,6 +6,20 @@ import {
   isReadableDocumentMimeType,
   type SupportedReadableDocumentMimeType,
 } from "@/lib/attachments";
+import mammoth from "mammoth";
+import Papa from "papaparse";
+import { read, utils } from "xlsx";
+
+type PdfJsModule = typeof import("pdfjs-dist/legacy/build/pdf.mjs");
+type PdfWorkerModule = typeof import("pdfjs-dist/legacy/build/pdf.worker.mjs");
+type PdfLoadingTask = ReturnType<PdfJsModule["getDocument"]>;
+type PdfPage = {
+  cleanup(): void;
+  getTextContent(options: {
+    disableNormalization: boolean;
+    includeMarkedContent: boolean;
+  }): Promise<{ items: unknown[] }>;
+};
 
 export type ExtractedDocumentText = {
   text: string;
@@ -156,7 +161,7 @@ export function hasReadableDocumentContentType(mediaType: string) {
 }
 
 async function extractPdfText(buffer: Buffer) {
-  const loadingTask = createPdfLoadingTask(buffer);
+  const loadingTask = await createPdfLoadingTask(buffer);
 
   try {
     const document = await loadingTask.promise;
@@ -235,8 +240,13 @@ function extractXlsxText(buffer: Buffer) {
   }
 }
 
-function createPdfLoadingTask(buffer: Buffer) {
-  ensurePdfJsWorker();
+async function createPdfLoadingTask(
+  buffer: Buffer
+): Promise<PdfLoadingTask> {
+  const pdfJs = await loadPdfJs();
+  const { getDocument, VerbosityLevel } = pdfJs;
+
+  await ensurePdfJsWorker();
 
   return getDocument({
     data: Uint8Array.from(buffer),
@@ -250,7 +260,7 @@ function createPdfLoadingTask(buffer: Buffer) {
   });
 }
 
-async function extractPdfPageText(page: PDFPageProxy) {
+async function extractPdfPageText(page: PdfPage) {
   const textContent = await page.getTextContent({
     disableNormalization: false,
     includeMarkedContent: false,
@@ -414,7 +424,21 @@ function trimTrailingEmptyCells(cells: string[]) {
   return trimmedCells;
 }
 
-function ensurePdfJsWorker() {
+let pdfJsModulePromise: Promise<PdfJsModule> | null = null;
+let pdfJsWorkerModulePromise: Promise<PdfWorkerModule> | null = null;
+
+async function loadPdfJs() {
+  pdfJsModulePromise ??= import("pdfjs-dist/legacy/build/pdf.mjs");
+  return pdfJsModulePromise;
+}
+
+async function loadPdfJsWorker() {
+  pdfJsWorkerModulePromise ??= import("pdfjs-dist/legacy/build/pdf.worker.mjs");
+  return pdfJsWorkerModulePromise;
+}
+
+async function ensurePdfJsWorker() {
+  const { WorkerMessageHandler } = await loadPdfJsWorker();
   const pdfJsGlobal = globalThis as typeof globalThis & {
     pdfjsWorker?: {
       WorkerMessageHandler?: typeof WorkerMessageHandler;
