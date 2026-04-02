@@ -1,10 +1,10 @@
 "use client";
 
+import { suggestions } from "@/lib/constants";
+import type { ChatMessage } from "@/lib/types";
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { motion } from "framer-motion";
 import { memo } from "react";
-import { suggestions } from "@/lib/constants";
-import type { ChatMessage } from "@/lib/types";
 import { Suggestion } from "../ai-elements/suggestion";
 import type { VisibilityType } from "./visibility-selector";
 
@@ -19,7 +19,7 @@ function PureSuggestedActions({ chatId, sendMessage }: SuggestedActionsProps) {
 
   return (
     <div
-      className="flex w-full gap-2.5 overflow-x-auto pb-1 sm:grid sm:grid-cols-2 sm:overflow-visible"
+      className="flex w-full gap-3 overflow-x-auto pb-1 sm:overflow-visible"
       data-testid="suggested-actions"
       style={{
         scrollbarWidth: "none",
@@ -30,10 +30,10 @@ function PureSuggestedActions({ chatId, sendMessage }: SuggestedActionsProps) {
       {suggestedActions.map((suggestedAction, index) => (
         <motion.div
           animate={{ opacity: 1, y: 0 }}
-          className="min-w-[200px] shrink-0 sm:min-w-0 sm:shrink"
+          className="min-w-[240px] shrink-0 sm:min-w-0 sm:shrink"
           exit={{ opacity: 0, y: 16 }}
           initial={{ opacity: 0, y: 16 }}
-          key={suggestedAction}
+          key={suggestedAction.id}
           transition={{
             delay: 0.06 * index,
             duration: 0.4,
@@ -41,7 +41,7 @@ function PureSuggestedActions({ chatId, sendMessage }: SuggestedActionsProps) {
           }}
         >
           <Suggestion
-            className="h-auto w-full whitespace-nowrap rounded-xl border border-border/50 bg-card/30 px-4 py-3 text-left text-[12px] leading-relaxed text-muted-foreground transition-all duration-200 sm:whitespace-normal sm:p-4 sm:text-[13px] hover:-translate-y-0.5 hover:bg-card/60 hover:text-foreground hover:shadow-[var(--shadow-card)]"
+            className="group h-full w-full rounded-2xl border border-border bg-card px-4 py-3 text-left text-foreground transition-colors duration-200 hover:border-foreground/20 hover:bg-muted/20"
             onClick={(suggestion) => {
               window.history.pushState(
                 {},
@@ -53,9 +53,24 @@ function PureSuggestedActions({ chatId, sendMessage }: SuggestedActionsProps) {
                 parts: [{ type: "text", text: suggestion }],
               });
             }}
-            suggestion={suggestedAction}
+            style={{
+              borderColor: suggestedAction.tint.border,
+            }}
+            suggestion={suggestedAction.prompt}
           >
-            {suggestedAction}
+            <div className="flex gap-3">
+              <span className="shrink-0 text-lg leading-none">
+                {suggestedAction.emoji}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[13px] font-semibold leading-snug tracking-tight text-foreground">
+                  {suggestedAction.title}
+                </div>
+                <p className="truncate text-[12px] leading-relaxed whitespace-normal text-muted-foreground">
+                  {suggestedAction.description}
+                </p>
+              </div>
+            </div>
           </Suggestion>
         </motion.div>
       ))}

@@ -367,6 +367,8 @@ export type PromptInputProps = Omit<
   HTMLAttributes<HTMLFormElement>,
   "onSubmit" | "onError"
 > & {
+  inputGroupClassName?: string;
+  inputGroupStyle?: React.CSSProperties;
   // e.g., "image/*" or leave undefined for any
   accept?: string;
   multiple?: boolean;
@@ -390,6 +392,8 @@ export type PromptInputProps = Omit<
 
 export const PromptInput = ({
   className,
+  inputGroupClassName,
+  inputGroupStyle,
   accept,
   multiple,
   globalDrop,
@@ -799,7 +803,12 @@ export const PromptInput = ({
         ref={formRef}
         {...props}
       >
-        <InputGroup className="overflow-hidden">{children}</InputGroup>
+        <InputGroup
+          className={cn("overflow-hidden", inputGroupClassName)}
+          style={inputGroupStyle}
+        >
+          {children}
+        </InputGroup>
       </form>
     </>
   );

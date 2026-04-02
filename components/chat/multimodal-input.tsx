@@ -1,30 +1,5 @@
 "use client";
 
-import type { UseChatHelpers } from "@ai-sdk/react";
-import type { UIMessage } from "ai";
-import equal from "fast-deep-equal";
-import {
-  ArrowUpIcon,
-  BrainIcon,
-  EyeIcon,
-  LockIcon,
-  WrenchIcon,
-} from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useTheme } from "next-themes";
-import {
-  type ChangeEvent,
-  type Dispatch,
-  memo,
-  type SetStateAction,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
-import { toast } from "sonner";
-import useSWR from "swr";
-import { useLocalStorage, useWindowSize } from "usehooks-ts";
 import {
   ModelSelector,
   ModelSelectorContent,
@@ -48,6 +23,31 @@ import {
 } from "@/lib/attachments";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import type { UseChatHelpers } from "@ai-sdk/react";
+import type { UIMessage } from "ai";
+import equal from "fast-deep-equal";
+import {
+  ArrowUpIcon,
+  BrainIcon,
+  EyeIcon,
+  LockIcon,
+  WrenchIcon,
+} from "lucide-react";
+import { useTheme } from "next-themes";
+import { useRouter } from "next/navigation";
+import {
+  type ChangeEvent,
+  type Dispatch,
+  memo,
+  type SetStateAction,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { toast } from "sonner";
+import useSWR from "swr";
+import { useLocalStorage, useWindowSize } from "usehooks-ts";
 import {
   PromptInput,
   PromptInputFooter,
@@ -554,7 +554,9 @@ function PureMultimodalInput({
       </div>
 
       <PromptInput
-        className="[&>div]:rounded-2xl [&>div]:border [&>div]:border-border/30 [&>div]:bg-card/70 [&>div]:shadow-[var(--shadow-composer)] [&>div]:transition-shadow [&>div]:duration-300 [&>div]:focus-within:shadow-[var(--shadow-composer-focus)]"
+        className="w-full"
+        inputGroupClassName="border-border/70 bg-card transition-shadow duration-200 focus-within:border-border/70 focus-within:shadow-sm has-[[data-slot=input-group-control]:focus-visible]:border-border/70 has-[[data-slot=input-group-control]:focus-visible]:ring-0"
+        inputGroupStyle={{ borderRadius: "24px" }}
         onSubmit={() => {
           if (input.startsWith("/")) {
             const query = input.slice(1).trim();
@@ -611,7 +613,7 @@ function PureMultimodalInput({
           </div>
         )}
         <PromptInputTextarea
-          className="min-h-24 text-[13px] leading-relaxed px-4 pt-3.5 pb-1.5 placeholder:text-muted-foreground/35"
+          className="min-h-16 px-4 pt-3 pb-1 text-[13px] leading-relaxed placeholder:text-muted-foreground/50"
           data-testid="multimodal-input"
           onChange={handleInput}
           onKeyDown={(e) => {
@@ -673,7 +675,7 @@ function PureMultimodalInput({
               className={cn(
                 "h-7 w-7 rounded-xl transition-all duration-200",
                 canSubmit
-                  ? "bg-foreground text-background hover:opacity-85 active:scale-95"
+                  ? "bg-primary text-background hover:opacity-85 active:scale-95"
                   : "bg-muted text-muted-foreground/25 cursor-not-allowed"
               )}
               data-testid="send-button"

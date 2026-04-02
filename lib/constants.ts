@@ -12,9 +12,54 @@ export const guestRegex = /^guest-\d+$/;
 
 export const DUMMY_PASSWORD = generateDummyPassword();
 
-export const suggestions = [
-  "What are the advantages of using Next.js?",
-  "Write code to demonstrate Dijkstra's algorithm",
-  "Help me write an essay about Silicon Valley",
-  "What is the weather in San Francisco?",
+export type ChatSuggestion = {
+  id: string;
+  title: string;
+  prompt: string;
+  emoji: string;
+  description?: string;
+  tint: {
+    background: string;
+    border: string;
+    glow: string;
+  };
+};
+
+export const suggestions: ChatSuggestion[] = [
+  {
+    id: "build-feature",
+    title: "Build something fun",
+    prompt: "Build a classic Snake game with TypeScript.",
+    emoji: "🛠️",
+    description: "Ship a playful feature with code I can run.",
+    tint: {
+      background: "oklch(0.62 0.09 240 / 0.10)",
+      border: "oklch(0.62 0.09 240 / 0.22)",
+      glow: "oklch(0.62 0.09 240 / 0.16)",
+    },
+  },
+  {
+    id: "explain-concept",
+    title: "Explain it clearly",
+    prompt: "What are the advantages of using AI?",
+    emoji: "💡",
+    description: "Break down a concept with practical examples.",
+    tint: {
+      background: "oklch(0.78 0.12 85 / 0.13)",
+      border: "oklch(0.78 0.12 85 / 0.26)",
+      glow: "oklch(0.78 0.12 85 / 0.18)",
+    },
+  },
+  {
+    id: "plan-work",
+    title: "Create a marketing plan",
+    prompt: "Create a plan to add a polished marketing flow to this app.",
+    emoji: "📝",
+    description: "Turn a rough idea into clear implementation steps.",
+    tint: {
+      background: "oklch(0.7 0.11 20 / 0.10)",
+      border: "oklch(0.7 0.11 20 / 0.22)",
+      glow: "oklch(0.7 0.11 20 / 0.16)",
+    },
+  },
 ];
