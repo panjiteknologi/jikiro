@@ -1,15 +1,23 @@
 import type { InferSelectModel } from "drizzle-orm";
 import {
   boolean,
+  customType,
   foreignKey,
+  integer,
   json,
+  pgEnum,
   pgTable,
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import {
+  ATTACHMENT_ASSET_STATUSES,
+  SUPPORTED_ATTACHMENT_MIME_TYPES,
+} from "@/lib/attachments";
 
 export const user = pgTable("User", {
   id: uuid("id").primaryKey().notNull().defaultRandom(),
@@ -51,6 +59,83 @@ export const message = pgTable("Message_v2", {
 });
 
 export type DBMessage = InferSelectModel<typeof message>;
+
+export const attachmentAssetStatusEnum = pgEnum(
+  "AttachmentAssetStatus",
+  ATTACHMENT_ASSET_STATUSES
+);
+
+const pgVector = customType<{ data: number[]; driverData: string }>({
+  dataType() {
+    return "vector";
+  },
+  toDriver(value) {
+    return JSON.stringify(value);
+  },
+  fromDriver(value) {
+    return value
+      .slice(1, -1)
+      .split(",")
+      .filter(Boolean)
+      .map((entry) => Number.parseFloat(entry));
+  },
+});
+
+export const attachmentAsset = pgTable(
+  "AttachmentAsset",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id),
+    chatId: uuid("chatId").notNull(),
+    storageKey: text("storageKey").notNull(),
+    filename: text("filename").notNull(),
+    contentType: varchar("contentType", {
+      enum: SUPPORTED_ATTACHMENT_MIME_TYPES,
+    }).notNull(),
+    sizeBytes: integer("sizeBytes").notNull(),
+    status: attachmentAssetStatusEnum("status").notNull().default("uploaded"),
+    extractedText: text("extractedText"),
+    error: text("error"),
+    truncated: boolean("truncated").notNull().default(false),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    storageKeyIdx: uniqueIndex("AttachmentAsset_storageKey_idx").on(
+      table.storageKey
+    ),
+  })
+);
+
+export type AttachmentAsset = InferSelectModel<typeof attachmentAsset>;
+
+export const attachmentChunk = pgTable(
+  "AttachmentChunk",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    attachmentId: uuid("attachmentId")
+      .notNull()
+      .references(() => attachmentAsset.id, { onDelete: "cascade" }),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id),
+    chatId: uuid("chatId").notNull(),
+    chunkIndex: integer("chunkIndex").notNull(),
+    text: text("text").notNull(),
+    embedding: pgVector("embedding").notNull(),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    attachmentChunkIdx: uniqueIndex("AttachmentChunk_attachment_chunk_idx").on(
+      table.attachmentId,
+      table.chunkIndex
+    ),
+  })
+);
+
+export type AttachmentChunk = InferSelectModel<typeof attachmentChunk>;
 
 export const vote = pgTable(
   "Vote_v2",

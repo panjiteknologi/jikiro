@@ -2,6 +2,8 @@ import type { NextRequest } from "next/server";
 import { auth } from "@/app/(auth)/auth";
 import {
   deleteAllChatsByUserId,
+  deleteAttachmentAssetsByUserId,
+  getAttachmentAssetsByUserId,
   getChatIdsByUserId,
   getChatsByUserId,
   getMessagesByChatIds,
@@ -52,14 +54,23 @@ export async function DELETE() {
     return new ChatbotError("unauthorized:chat").toResponse();
   }
 
-  const chatIds = await getChatIdsByUserId({ userId: session.user.id });
+  const [chatIds, attachmentAssets] = await Promise.all([
+    getChatIdsByUserId({ userId: session.user.id }),
+    getAttachmentAssetsByUserId({ userId: session.user.id }),
+  ]);
 
-  if (chatIds.length > 0) {
-    const messages = await getMessagesByChatIds({ ids: chatIds });
-    const storageKeys = extractUniqueStorageKeysFromMessages({
-      messages,
-      userId: session.user.id,
-    });
+  if (chatIds.length > 0 || attachmentAssets.length > 0) {
+    const messages =
+      chatIds.length > 0 ? await getMessagesByChatIds({ ids: chatIds }) : [];
+    const storageKeys = [
+      ...new Set([
+        ...extractUniqueStorageKeysFromMessages({
+          messages,
+          userId: session.user.id,
+        }),
+        ...attachmentAssets.map((attachment) => attachment.storageKey),
+      ]),
+    ];
 
     await deleteFilesFromS3BestEffort({
       keys: storageKeys,
@@ -71,6 +82,7 @@ export async function DELETE() {
     });
   }
 
+  await deleteAttachmentAssetsByUserId({ userId: session.user.id });
   const result = await deleteAllChatsByUserId({ userId: session.user.id });
 
   return Response.json(result, { status: 200 });

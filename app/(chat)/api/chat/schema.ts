@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { SUPPORTED_ATTACHMENT_MIME_TYPES } from "@/lib/storage/s3";
+import { SUPPORTED_ATTACHMENT_MIME_TYPES } from "@/lib/attachments";
 
 const textPartSchema = z.object({
   type: z.enum(["text"]),
@@ -10,6 +10,7 @@ const filePartSchema = z.object({
   type: z.enum(["file"]),
   mediaType: z.enum(SUPPORTED_ATTACHMENT_MIME_TYPES),
   name: z.string().min(1).max(100),
+  attachmentId: z.string().uuid().optional(),
   url: z.union([z.string().url(), z.string().startsWith("/")]),
 });
 

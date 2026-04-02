@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/app/(auth)/auth";
+import { deleteAttachmentAssetByStorageKey } from "@/lib/db/queries";
 import {
   decodeStorageKey,
   deleteFileFromS3,
@@ -108,23 +109,30 @@ export async function DELETE(
   try {
     await deleteFileFromS3(storageKey);
   } catch (error) {
-    if (
-      typeof error === "object" &&
-      error !== null &&
-      "$metadata" in error &&
-      typeof error.$metadata === "object" &&
-      error.$metadata !== null &&
-      "httpStatusCode" in error.$metadata &&
-      error.$metadata.httpStatusCode === 404
-    ) {
-      return Response.json({ ok: true }, { status: 200 });
+    if (!isS3NotFoundError(error)) {
+      return NextResponse.json(
+        { error: "Failed to delete file" },
+        { status: 500 }
+      );
     }
-
-    return NextResponse.json(
-      { error: "Failed to delete file" },
-      { status: 500 }
-    );
   }
 
+  await deleteAttachmentAssetByStorageKey({
+    storageKey,
+    userId: session.user.id,
+  });
+
   return Response.json({ ok: true }, { status: 200 });
+}
+
+function isS3NotFoundError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "$metadata" in error &&
+    typeof error.$metadata === "object" &&
+    error.$metadata !== null &&
+    "httpStatusCode" in error.$metadata &&
+    error.$metadata.httpStatusCode === 404
+  );
 }

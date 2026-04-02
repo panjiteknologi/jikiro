@@ -31,6 +31,7 @@
 - Data Persistence
   - [Neon Serverless Postgres](https://vercel.com/marketplace/neon) for saving chat history and user data
   - S3-compatible object storage for file uploads
+  - Readable document ingestion with cached extraction and thread-scoped retrieval for `txt`, `csv`, `pdf`, `docx`, and `xlsx`
 - [Auth.js](https://authjs.dev)
   - Simple and secure authentication
 
@@ -56,6 +57,14 @@ You can deploy your own version of Chatbot to Vercel with one click:
 
 You will need to use the environment variables [defined in `.env.example`](.env.example) to run Chatbot. It's recommended you use [Vercel Environment Variables](https://vercel.com/docs/projects/environment-variables) for this, but a `.env` file is all that is necessary.
 
+If you are running outside Vercel and want durable background document ingestion, configure Workflow with the Postgres world:
+
+```bash
+WORKFLOW_TARGET_WORLD=@workflow/world-postgres
+WORKFLOW_POSTGRES_URL=postgres://...
+AI_EMBEDDING_MODEL=<your-gateway-embedding-model-id>
+```
+
 > Note: You should not commit your `.env` file or it will expose secrets that will allow others to control access to your various AI and authentication provider accounts.
 
 1. Install Vercel CLI: `npm i -g vercel`
@@ -67,5 +76,7 @@ pnpm install
 pnpm db:migrate # Setup database or apply latest database changes
 pnpm dev
 ```
+
+If you use Neon with vector-backed document retrieval, `pnpm db:migrate` and `pnpm db:push` now bootstrap `CREATE EXTENSION IF NOT EXISTS vector;` automatically before applying schema changes.
 
 Your app template should now be running on [localhost:3000](http://localhost:3000).

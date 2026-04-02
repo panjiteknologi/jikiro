@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { getAttachmentStatusLabel } from "@/lib/attachments";
 import type { Attachment } from "@/lib/types";
 import { Spinner } from "../ui/spinner";
 import { CrossSmallIcon } from "./icons";
@@ -12,12 +13,14 @@ export const PreviewAttachment = ({
   isUploading?: boolean;
   onRemove?: () => void;
 }) => {
-  const { name, url, contentType } = attachment;
+  const { error, name, status, url, contentType } = attachment;
+  const statusLabel = isUploading ? null : getAttachmentStatusLabel(status);
 
   return (
     <div
       className="group relative h-24 w-24 shrink-0 overflow-hidden rounded-xl border border-border/40 bg-muted"
       data-testid="input-attachment-preview"
+      title={error ?? name ?? "attachment"}
     >
       {contentType?.startsWith("image") ? (
         <Image
@@ -36,6 +39,20 @@ export const PreviewAttachment = ({
           <div className="line-clamp-2 text-[10px] leading-tight text-muted-foreground">
             {name ?? "attachment"}
           </div>
+        </div>
+      )}
+
+      {statusLabel && (
+        <div
+          className={`absolute bottom-1.5 left-1.5 rounded-full px-1.5 py-0.5 text-[9px] font-medium ${
+            status === "failed"
+              ? "bg-destructive/90 text-destructive-foreground"
+              : status === "ready"
+                ? "bg-emerald-600/90 text-white"
+                : "bg-amber-500/90 text-black"
+          }`}
+        >
+          {statusLabel}
         </div>
       )}
 

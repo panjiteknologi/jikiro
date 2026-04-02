@@ -3,6 +3,7 @@ import {
   convertToModelMessages,
   createUIMessageStream,
   createUIMessageStreamResponse,
+  embed,
   generateId,
   stepCountIs,
   streamText,
@@ -19,25 +20,30 @@ import {
   getCapabilities,
 } from "@/lib/ai/models";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
-import { getLanguageModel } from "@/lib/ai/providers";
-import {
-  extractStorageKeyFromFileUrl,
-  getChatUploadPrefix,
-  getFileDataUrlFromS3,
-  isImageAttachmentMimeType,
-} from "@/lib/storage/s3";
+import { getEmbeddingModel, getLanguageModel } from "@/lib/ai/providers";
 import { createDocument } from "@/lib/ai/tools/create-document";
 import { editDocument } from "@/lib/ai/tools/edit-document";
 import { getWeather } from "@/lib/ai/tools/get-weather";
 import { requestSuggestions } from "@/lib/ai/tools/request-suggestions";
 import { updateDocument } from "@/lib/ai/tools/update-document";
+import {
+  DOCUMENT_RETRIEVAL_LIMIT,
+  isReadableDocumentMimeType,
+} from "@/lib/attachments";
+import {
+  buildRetrievedDocumentContext,
+  getAttachmentRetrievalQuery,
+} from "@/lib/attachments/ingestion";
 import { isProductionEnvironment } from "@/lib/constants";
 import {
   createStreamId,
+  deleteAttachmentAssetsByChatId,
   deleteChatById,
+  getAttachmentAssetsByChatId,
   getChatById,
   getMessageCountByUserId,
   getMessagesByChatId,
+  retrieveRelevantAttachmentChunks,
   saveChat,
   saveMessages,
   updateChatTitleById,
@@ -48,10 +54,18 @@ import { ChatbotError } from "@/lib/errors";
 import { checkIpRateLimit } from "@/lib/ratelimit";
 import {
   deleteFilesFromS3BestEffort,
+  extractStorageKeyFromFileUrl,
   extractUniqueStorageKeysFromMessages,
+  getChatUploadPrefix,
+  getFileDataUrlFromS3,
+  isImageAttachmentMimeType,
 } from "@/lib/storage/s3";
 import type { ChatMessage } from "@/lib/types";
-import { convertToUIMessages, generateUUID } from "@/lib/utils";
+import {
+  convertToUIMessages,
+  generateUUID,
+  getTextFromMessage,
+} from "@/lib/utils";
 import { generateTitleFromUserMessage } from "../../actions";
 import { type PostRequestBody, postRequestBodySchema } from "./schema";
 
@@ -67,7 +81,7 @@ function getStreamContext() {
 
 export { getStreamContext };
 
-async function resolvePrivateFilePartsForModel({
+function resolvePrivateFilePartsForModel({
   messages,
   userId,
 }: {
@@ -77,45 +91,162 @@ async function resolvePrivateFilePartsForModel({
   return Promise.all(
     messages.map(async (message) => ({
       ...message,
-      parts: await Promise.all(
-        message.parts.map(async (part) => {
-          if (part.type !== "file") {
-            return part;
-          }
+      parts: (
+        await Promise.all(
+          message.parts.map(async (part) => {
+            if (part.type !== "file") {
+              return part;
+            }
 
-          if (!isImageAttachmentMimeType(part.mediaType)) {
-            const fileLabel =
-              ("filename" in part && typeof part.filename === "string"
-                ? part.filename
-                : "name" in part && typeof part.name === "string"
-                  ? part.name
-                  : "file");
+            const storageKey = extractStorageKeyFromFileUrl(part.url);
+
+            if (
+              storageKey &&
+              !storageKey.startsWith(getChatUploadPrefix(userId))
+            ) {
+              throw new ChatbotError("forbidden:chat");
+            }
+
+            if (!isImageAttachmentMimeType(part.mediaType)) {
+              return null;
+            }
+
+            if (!storageKey) {
+              return part;
+            }
+
+            const dataUrl = await getFileDataUrlFromS3(storageKey);
 
             return {
-              type: "text" as const,
-              text: `User attached file: ${fileLabel} (${part.mediaType}). File contents are not included in model context.`,
+              ...part,
+              url: dataUrl,
             };
-          }
-
-          const storageKey = extractStorageKeyFromFileUrl(part.url);
-
-          if (!storageKey) {
-            return part;
-          }
-
-          if (!storageKey.startsWith(getChatUploadPrefix(userId))) {
-            throw new ChatbotError("forbidden:chat");
-          }
-
-          const dataUrl = await getFileDataUrlFromS3(storageKey);
-
-          return {
-            ...part,
-            url: dataUrl,
-          };
-        })
-      ),
+          })
+        )
+      ).filter((part) => part !== null),
     }))
+  );
+}
+
+async function injectRetrievedDocumentContext({
+  chatId,
+  messages,
+  originalMessages,
+  userId,
+}: {
+  chatId: string;
+  messages: ChatMessage[];
+  originalMessages: ChatMessage[];
+  userId: string;
+}) {
+  const originalLastMessage = originalMessages.at(-1);
+  const resolvedLastMessage = messages.at(-1);
+
+  if (
+    !originalLastMessage ||
+    !resolvedLastMessage ||
+    originalLastMessage.role !== "user"
+  ) {
+    return messages;
+  }
+
+  const currentReadableAttachmentIds = originalLastMessage.parts.flatMap(
+    (part) =>
+      part.type === "file" &&
+      isReadableDocumentMimeType(part.mediaType) &&
+      "attachmentId" in part &&
+      typeof part.attachmentId === "string"
+        ? [part.attachmentId]
+        : []
+  );
+
+  const readyReadableAttachments = (
+    await getAttachmentAssetsByChatId({
+      chatId,
+      userId,
+    })
+  ).filter(
+    (attachment) =>
+      attachment.status === "ready" &&
+      isReadableDocumentMimeType(attachment.contentType)
+  );
+
+  const readyReadableAttachmentIds = new Set(
+    readyReadableAttachments.map((attachment) => attachment.id)
+  );
+  const retrievalAttachmentIds =
+    currentReadableAttachmentIds.length > 0
+      ? currentReadableAttachmentIds.filter((id) =>
+          readyReadableAttachmentIds.has(id)
+        )
+      : readyReadableAttachments.map((attachment) => attachment.id);
+
+  const latestUserText = getTextFromMessage(originalLastMessage);
+  const hasUserText = latestUserText.trim().length > 0;
+
+  if (retrievalAttachmentIds.length === 0) {
+    if (!hasUserText && currentReadableAttachmentIds.length > 0) {
+      return messages.map((message, index) =>
+        index === messages.length - 1
+          ? {
+              ...message,
+              parts: [
+                {
+                  type: "text" as const,
+                  text: "Summarize the attached document(s).",
+                },
+                ...message.parts,
+              ],
+            }
+          : message
+      );
+    }
+
+    return messages;
+  }
+
+  const retrievalQuery = getAttachmentRetrievalQuery(latestUserText);
+  const { embedding } = await embed({
+    model: getEmbeddingModel(),
+    value: retrievalQuery,
+  });
+
+  const retrievedChunks = await retrieveRelevantAttachmentChunks({
+    attachmentIds: retrievalAttachmentIds,
+    chatId,
+    embedding,
+    limit: DOCUMENT_RETRIEVAL_LIMIT,
+    userId,
+  });
+
+  const documentContext = buildRetrievedDocumentContext(retrievedChunks);
+  const injectedParts: Array<{ text: string; type: "text" }> = [];
+
+  if (documentContext) {
+    injectedParts.push({
+      type: "text" as const,
+      text: `Use the following extracted document context from this chat when answering. If the context is insufficient, say so.\n\n${documentContext}`,
+    });
+  }
+
+  if (!hasUserText && currentReadableAttachmentIds.length > 0) {
+    injectedParts.push({
+      type: "text" as const,
+      text: "Summarize the attached document(s).",
+    });
+  }
+
+  if (injectedParts.length === 0) {
+    return messages;
+  }
+
+  return messages.map((message, index) =>
+    index === messages.length - 1
+      ? {
+          ...message,
+          parts: [...injectedParts, ...message.parts],
+        }
+      : message
   );
 }
 
@@ -247,10 +378,18 @@ export async function POST(request: Request) {
     const isReasoningModel = capabilities?.reasoning === true;
     const supportsTools = capabilities?.tools === true;
 
-    const modelReadyMessages = await resolvePrivateFilePartsForModel({
+    const resolvedMessages = await resolvePrivateFilePartsForModel({
       messages: uiMessages,
       userId: session.user.id,
     });
+    const modelReadyMessages = isToolApprovalFlow
+      ? resolvedMessages
+      : await injectRetrievedDocumentContext({
+          chatId: id,
+          messages: resolvedMessages,
+          originalMessages: uiMessages,
+          userId: session.user.id,
+        });
     const modelMessages = await convertToModelMessages(modelReadyMessages);
 
     const stream = createUIMessageStream({
@@ -427,11 +566,19 @@ export async function DELETE(request: Request) {
     return new ChatbotError("forbidden:chat").toResponse();
   }
 
-  const messages = await getMessagesByChatId({ id });
-  const storageKeys = extractUniqueStorageKeysFromMessages({
-    messages,
-    userId: session.user.id,
-  });
+  const [messages, attachmentAssets] = await Promise.all([
+    getMessagesByChatId({ id }),
+    getAttachmentAssetsByChatId({ chatId: id, userId: session.user.id }),
+  ]);
+  const storageKeys = [
+    ...new Set([
+      ...extractUniqueStorageKeysFromMessages({
+        messages,
+        userId: session.user.id,
+      }),
+      ...attachmentAssets.map((attachment) => attachment.storageKey),
+    ]),
+  ];
 
   await deleteFilesFromS3BestEffort({
     keys: storageKeys,
@@ -441,6 +588,7 @@ export async function DELETE(request: Request) {
       operation: "delete-chat",
     },
   });
+  await deleteAttachmentAssetsByChatId({ chatId: id, userId: session.user.id });
 
   const deletedChat = await deleteChatById({ id });
 

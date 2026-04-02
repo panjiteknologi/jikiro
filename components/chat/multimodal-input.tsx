@@ -42,6 +42,10 @@ import {
   DEFAULT_CHAT_MODEL,
   type ModelCapabilities,
 } from "@/lib/ai/models";
+import {
+  getAttachmentAcceptAttribute,
+  isReadableDocumentMimeType,
+} from "@/lib/attachments";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import {
@@ -214,6 +218,97 @@ function PureMultimodalInput({
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashQuery, setSlashQuery] = useState("");
   const [slashIndex, setSlashIndex] = useState(0);
+  const pendingAttachmentIds = attachments
+    .filter(
+      (attachment) =>
+        attachment.id &&
+        attachment.status &&
+        attachment.status !== "ready" &&
+        attachment.status !== "failed"
+    )
+    .map((attachment) => attachment.id as string);
+
+  const { data: attachmentStatusData } = useSWR(
+    pendingAttachmentIds.length > 0
+      ? `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/files/status?ids=${pendingAttachmentIds.join(",")}`
+      : null,
+    (url: string) => fetch(url).then((response) => response.json()),
+    {
+      refreshInterval: pendingAttachmentIds.length > 0 ? 1500 : 0,
+      revalidateOnFocus: false,
+      dedupingInterval: 0,
+    }
+  );
+
+  useEffect(() => {
+    if (!Array.isArray(attachmentStatusData?.attachments)) {
+      return;
+    }
+
+    const nextStatusById = new Map<
+      string,
+      {
+        error?: string | null;
+        id: string;
+        status?: Attachment["status"];
+      }
+    >(
+      attachmentStatusData.attachments.map(
+        (attachment: {
+          error?: string | null;
+          id: string;
+          status?: Attachment["status"];
+        }) => [attachment.id, attachment]
+      )
+    );
+
+    setAttachments((currentAttachments) => {
+      let hasChanges = false;
+
+      const updatedAttachments = currentAttachments.map((attachment) => {
+        if (!attachment.id) {
+          return attachment;
+        }
+
+        const nextAttachment = nextStatusById.get(attachment.id);
+
+        if (
+          !nextAttachment ||
+          (attachment.status === nextAttachment.status &&
+            attachment.error === nextAttachment.error)
+        ) {
+          return attachment;
+        }
+
+        hasChanges = true;
+
+        return {
+          ...attachment,
+          status: nextAttachment.status,
+          error: nextAttachment.error ?? null,
+        };
+      });
+
+      return hasChanges ? updatedAttachments : currentAttachments;
+    });
+  }, [attachmentStatusData, setAttachments]);
+
+  const hasPendingReadableAttachments = attachments.some(
+    (attachment) =>
+      isReadableDocumentMimeType(attachment.contentType) &&
+      attachment.status !== "ready" &&
+      attachment.status !== "failed"
+  );
+  const hasFailedReadableAttachments = attachments.some(
+    (attachment) =>
+      isReadableDocumentMimeType(attachment.contentType) &&
+      attachment.status === "failed"
+  );
+  const canSubmit =
+    (input.trim().length > 0 || attachments.length > 0) &&
+    uploadQueue.length === 0 &&
+    !hasPendingReadableAttachments &&
+    !hasFailedReadableAttachments;
 
   const submitForm = useCallback(() => {
     window.history.pushState(
@@ -230,6 +325,7 @@ function PureMultimodalInput({
           url: attachment.url,
           name: attachment.name,
           mediaType: attachment.contentType,
+          ...(attachment.id ? { attachmentId: attachment.id } : {}),
         })),
         ...(input.trim()
           ? [
@@ -260,35 +356,42 @@ function PureMultimodalInput({
     chatId,
   ]);
 
-  const uploadFile = useCallback(async (file: File) => {
-    const formData = new FormData();
-    formData.append("file", file);
+  const uploadFile = useCallback(
+    async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("chatId", chatId);
 
-    try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/files/upload`,
-        {
-          method: "POST",
-          body: formData,
+      try {
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/files/upload`,
+          {
+            method: "POST",
+            body: formData,
+          }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          const { id, url, pathname, contentType, status } = data;
+
+          return {
+            id,
+            url,
+            name: pathname,
+            contentType,
+            status,
+            error: null,
+          };
         }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        const { url, pathname, contentType } = data;
-
-        return {
-          url,
-          name: pathname,
-          contentType,
-        };
+        const { error } = await response.json();
+        toast.error(error);
+      } catch (_error) {
+        toast.error("Failed to upload file, please try again!");
       }
-      const { error } = await response.json();
-      toast.error(error);
-    } catch (_error) {
-      toast.error("Failed to upload file, please try again!");
-    }
-  }, []);
+    },
+    [chatId]
+  );
 
   const handleFileChange = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
@@ -335,7 +438,9 @@ function PureMultimodalInput({
           throw new Error("Failed to delete attachment");
         }
       } catch (_error) {
-        toast.error("Attachment removed locally, but failed to delete from storage.");
+        toast.error(
+          "Attachment removed locally, but failed to delete from storage."
+        );
       }
     },
     [setAttachments]
@@ -428,6 +533,7 @@ function PureMultimodalInput({
         )}
 
       <input
+        accept={getAttachmentAcceptAttribute()}
         className="pointer-events-none fixed -top-4 -left-4 size-0.5 opacity-0"
         multiple
         onChange={handleFileChange}
@@ -461,6 +567,14 @@ function PureMultimodalInput({
           if (!input.trim() && attachments.length === 0) {
             return;
           }
+          if (hasPendingReadableAttachments) {
+            toast.error("Please wait for document processing to finish.");
+            return;
+          }
+          if (hasFailedReadableAttachments) {
+            toast.error("Remove failed document attachments before sending.");
+            return;
+          }
           if (status === "ready" || status === "error") {
             submitForm();
           } else {
@@ -478,7 +592,7 @@ function PureMultimodalInput({
                 attachment={attachment}
                 key={attachment.url}
                 onRemove={() => {
-                  void removeAttachment(attachment);
+                  removeAttachment(attachment).catch(() => undefined);
                 }}
               />
             ))}
@@ -558,12 +672,12 @@ function PureMultimodalInput({
             <PromptInputSubmit
               className={cn(
                 "h-7 w-7 rounded-xl transition-all duration-200",
-                input.trim()
+                canSubmit
                   ? "bg-foreground text-background hover:opacity-85 active:scale-95"
                   : "bg-muted text-muted-foreground/25 cursor-not-allowed"
               )}
               data-testid="send-button"
-              disabled={!input.trim() || uploadQueue.length > 0}
+              disabled={!canSubmit}
               status={status}
               variant="secondary"
             >

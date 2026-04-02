@@ -6,30 +6,11 @@ import {
 } from "@aws-sdk/client-s3";
 import type { DBMessage } from "@/lib/db/schema";
 
-export const SUPPORTED_IMAGE_MIME_TYPES = [
-  "image/jpeg",
-  "image/png",
-] as const;
-
-export const SUPPORTED_DOCUMENT_MIME_TYPES = [
-  "application/pdf",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.ms-excel",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "application/vnd.ms-powerpoint",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  "text/plain",
-  "text/csv",
-] as const;
-
-export const SUPPORTED_ATTACHMENT_MIME_TYPES = [
-  ...SUPPORTED_IMAGE_MIME_TYPES,
-  ...SUPPORTED_DOCUMENT_MIME_TYPES,
-] as const;
-
-export type SupportedAttachmentMimeType =
-  (typeof SUPPORTED_ATTACHMENT_MIME_TYPES)[number];
+export type { SupportedAttachmentMimeType } from "@/lib/attachments";
+export {
+  isImageAttachmentMimeType,
+  isSupportedAttachmentMimeType,
+} from "@/lib/attachments";
 
 type S3Env = {
   endpoint: string;
@@ -48,13 +29,7 @@ function getS3Env(): S3Env {
   const secretAccessKey = process.env.S3_SECRET_ACCESS_KEY;
   const bucket = process.env.S3_BUCKET;
 
-  if (
-    !endpoint ||
-    !region ||
-    !accessKeyId ||
-    !secretAccessKey ||
-    !bucket
-  ) {
+  if (!endpoint || !region || !accessKeyId || !secretAccessKey || !bucket) {
     throw new Error("Missing S3 storage environment variables");
   }
 
@@ -95,20 +70,6 @@ export function sanitizeUploadFilename(filename: string) {
   const sanitized = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
 
   return sanitized.length > 0 ? sanitized : "file";
-}
-
-export function isSupportedAttachmentMimeType(
-  mediaType: string
-): mediaType is SupportedAttachmentMimeType {
-  return (SUPPORTED_ATTACHMENT_MIME_TYPES as readonly string[]).includes(
-    mediaType
-  );
-}
-
-export function isImageAttachmentMimeType(
-  mediaType: string
-): mediaType is (typeof SUPPORTED_IMAGE_MIME_TYPES)[number] {
-  return (SUPPORTED_IMAGE_MIME_TYPES as readonly string[]).includes(mediaType);
 }
 
 export function getChatUploadPrefix(userId: string) {
@@ -201,7 +162,7 @@ export async function uploadFileToS3({
   );
 }
 
-export async function getFileFromS3(key: string) {
+export function getFileFromS3(key: string) {
   return getS3Client().send(
     new GetObjectCommand({
       Bucket: getS3Bucket(),

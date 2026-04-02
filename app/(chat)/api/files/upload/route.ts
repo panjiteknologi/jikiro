@@ -1,25 +1,31 @@
 import { NextResponse } from "next/server";
+import { start } from "workflow/api";
 import { z } from "zod";
 
 import { auth } from "@/app/(auth)/auth";
 import {
-  buildChatUploadKey,
-  getInternalFileUrl,
+  getAttachmentSizeLimit,
+  isReadableDocumentMimeType,
   isSupportedAttachmentMimeType,
   SUPPORTED_ATTACHMENT_MIME_TYPES,
+} from "@/lib/attachments";
+import {
+  createAttachmentAsset,
+  deleteAttachmentAssetById,
+  getChatById,
+} from "@/lib/db/queries";
+import {
+  buildChatUploadKey,
+  deleteFileFromS3,
+  getInternalFileUrl,
   uploadFileToS3,
 } from "@/lib/storage/s3";
 import { generateUUID } from "@/lib/utils";
+import { ingestAttachmentAssetWorkflow } from "@/workflows/attachment-ingestion";
 
-const FileSchema = z.object({
-  file: z
-    .instanceof(Blob)
-    .refine((file) => file.size <= 5 * 1024 * 1024, {
-      message: "File size should be less than 5MB",
-    })
-    .refine((file) => isSupportedAttachmentMimeType(file.type), {
-      message: `File type should be one of: ${SUPPORTED_ATTACHMENT_MIME_TYPES.join(", ")}`,
-    }),
+const UploadRequestSchema = z.object({
+  chatId: z.string().uuid(),
+  file: z.instanceof(Blob),
 });
 
 export async function POST(request: Request) {
@@ -35,23 +41,53 @@ export async function POST(request: Request) {
 
   try {
     const formData = await request.formData();
-    const file = formData.get("file") as Blob;
+    const rawFile = formData.get("file");
+    const rawChatId = formData.get("chatId");
 
-    if (!file) {
+    if (!rawFile || !(rawFile instanceof Blob)) {
       return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
     }
 
-    const validatedFile = FileSchema.safeParse({ file });
+    const parsedRequest = UploadRequestSchema.safeParse({
+      chatId: rawChatId,
+      file: rawFile,
+    });
 
-    if (!validatedFile.success) {
-      const errorMessage = validatedFile.error.errors
+    if (!parsedRequest.success) {
+      const errorMessage = parsedRequest.error.errors
         .map((error) => error.message)
         .join(", ");
 
       return NextResponse.json({ error: errorMessage }, { status: 400 });
     }
 
-    const filename = (formData.get("file") as File).name;
+    const { chatId, file } = parsedRequest.data;
+    const chat = await getChatById({ id: chatId });
+
+    if (chat && chat.userId !== session.user.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    if (!isSupportedAttachmentMimeType(file.type)) {
+      return NextResponse.json(
+        {
+          error: `File type should be one of: ${SUPPORTED_ATTACHMENT_MIME_TYPES.join(", ")}`,
+        },
+        { status: 400 }
+      );
+    }
+
+    const maxSize = getAttachmentSizeLimit(file.type);
+
+    if (file.size > maxSize) {
+      const maxSizeInMb = Math.round(maxSize / (1024 * 1024));
+      return NextResponse.json(
+        { error: `File size should be less than ${maxSizeInMb}MB` },
+        { status: 400 }
+      );
+    }
+
+    const filename = (rawFile as File).name;
     const { key, pathname } = buildChatUploadKey({
       userId: session.user.id,
       fileId: generateUUID(),
@@ -67,10 +103,50 @@ export async function POST(request: Request) {
         filename: pathname,
       });
 
+      const createdAttachment = await createAttachmentAsset({
+        id: generateUUID(),
+        userId: session.user.id,
+        chatId,
+        storageKey: key,
+        filename: pathname,
+        contentType: file.type,
+        sizeBytes: file.size,
+        status: isReadableDocumentMimeType(file.type) ? "uploaded" : "ready",
+      }).catch(async (error) => {
+        await deleteFileFromS3(key).catch(() => undefined);
+        throw error;
+      });
+
+      if (isReadableDocumentMimeType(file.type)) {
+        try {
+          await start(ingestAttachmentAssetWorkflow, [
+            {
+              attachmentId: createdAttachment.id,
+              userId: session.user.id,
+            },
+          ]);
+        } catch (_error) {
+          await Promise.allSettled([
+            deleteFileFromS3(key),
+            deleteAttachmentAssetById({
+              id: createdAttachment.id,
+              userId: session.user.id,
+            }),
+          ]);
+
+          return NextResponse.json(
+            { error: "Failed to start document processing" },
+            { status: 500 }
+          );
+        }
+      }
+
       return NextResponse.json({
+        id: createdAttachment.id,
         url: getInternalFileUrl(key),
         pathname,
         contentType: file.type,
+        status: createdAttachment.status,
       });
     } catch (_error) {
       return NextResponse.json({ error: "Upload failed" }, { status: 500 });

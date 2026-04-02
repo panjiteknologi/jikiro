@@ -5,6 +5,7 @@ import type { createDocument } from "./ai/tools/create-document";
 import type { getWeather } from "./ai/tools/get-weather";
 import type { requestSuggestions } from "./ai/tools/request-suggestions";
 import type { updateDocument } from "./ai/tools/update-document";
+import type { AttachmentAssetStatus } from "./attachments";
 import type { Suggestion } from "./db/schema";
 
 export const messageMetadataSchema = z.object({
@@ -49,7 +50,10 @@ export type ChatMessage = UIMessage<
 >;
 
 export type Attachment = {
+  id?: string;
   name: string;
   url: string;
   contentType: string;
+  status?: AttachmentAssetStatus;
+  error?: string | null;
 };

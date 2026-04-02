@@ -19,6 +19,8 @@ yarn-error.log*
 .env
 .vercel
 .env*.local
+.workflow-data/
+public/.well-known/
 /test-results/
 /playwright-report/
 /blob-report/

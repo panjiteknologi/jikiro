@@ -28,3 +28,13 @@ export function getTitleModel() {
   }
   return gateway.languageModel(titleModel.id);
 }
+
+export function getEmbeddingModel() {
+  const modelId = process.env.AI_EMBEDDING_MODEL;
+
+  if (!modelId) {
+    throw new Error("AI_EMBEDDING_MODEL is not configured");
+  }
+
+  return gateway.embeddingModel(modelId);
+}

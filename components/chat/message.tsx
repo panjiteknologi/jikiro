@@ -1,9 +1,9 @@
 "use client";
+import type { UseChatHelpers } from "@ai-sdk/react";
 import type { Vote } from "@/lib/db/schema";
 import type { ChatMessage } from "@/lib/types";
 import { cn, sanitizeText } from "@/lib/utils";
-import Jikiro from '@/public/svg/jikiro';
-import type { UseChatHelpers } from "@ai-sdk/react";
+import Jikiro from "@/public/svg/jikiro";
 import { MessageContent, MessageResponse } from "../ai-elements/message";
 import { Shimmer } from "../ai-elements/shimmer";
 import {
@@ -72,7 +72,13 @@ const PurePreviewMessage = ({
       {attachmentsFromMessage.map((attachment) => (
         <PreviewAttachment
           attachment={{
-            name: attachment.filename ?? "file",
+            name:
+              "filename" in attachment &&
+              typeof attachment.filename === "string"
+                ? attachment.filename
+                : "name" in attachment && typeof attachment.name === "string"
+                  ? attachment.name
+                  : "file",
             contentType: attachment.mediaType,
             url: attachment.url,
           }}

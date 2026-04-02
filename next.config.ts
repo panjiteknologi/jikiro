@@ -1,5 +1,6 @@
 import { withBotId } from "botid/next/config";
 import type { NextConfig } from "next";
+import { withWorkflow } from "workflow/next";
 
 const basePath = process.env.IS_DEMO === "1" ? "/demo" : "";
 
@@ -51,4 +52,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default withBotId(nextConfig);
+export default withWorkflow(withBotId(nextConfig));

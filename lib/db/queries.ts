@@ -11,14 +11,22 @@ import {
   inArray,
   lt,
   type SQL,
+  sql,
 } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
+import { cosineDistance } from "drizzle-orm/sql/functions/vector";
 import postgres from "postgres";
 import type { ArtifactKind } from "@/components/chat/artifact";
 import type { VisibilityType } from "@/components/chat/visibility-selector";
+import type {
+  AttachmentAssetStatus,
+  SupportedAttachmentMimeType,
+} from "@/lib/attachments";
 import { ChatbotError } from "../errors";
 import { generateUUID } from "../utils";
 import {
+  attachmentAsset,
+  attachmentChunk,
   type Chat,
   chat,
   type DBMessage,
@@ -286,6 +294,373 @@ export async function getChatById({ id }: { id: string }) {
     return selectedChat;
   } catch (_error) {
     throw new ChatbotError("bad_request:database", "Failed to get chat by id");
+  }
+}
+
+export async function createAttachmentAsset({
+  chatId,
+  contentType,
+  filename,
+  id,
+  sizeBytes,
+  status,
+  storageKey,
+  userId,
+}: {
+  chatId: string;
+  contentType: SupportedAttachmentMimeType;
+  filename: string;
+  id?: string;
+  sizeBytes: number;
+  status: AttachmentAssetStatus;
+  storageKey: string;
+  userId: string;
+}) {
+  try {
+    const [createdAttachment] = await db
+      .insert(attachmentAsset)
+      .values({
+        ...(id ? { id } : {}),
+        userId,
+        chatId,
+        storageKey,
+        filename,
+        contentType,
+        sizeBytes,
+        status,
+        updatedAt: new Date(),
+      })
+      .returning();
+
+    return createdAttachment;
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to create attachment asset"
+    );
+  }
+}
+
+export async function getAttachmentAssetByStorageKey({
+  storageKey,
+  userId,
+}: {
+  storageKey: string;
+  userId: string;
+}) {
+  try {
+    const [selectedAttachment] = await db
+      .select()
+      .from(attachmentAsset)
+      .where(
+        and(
+          eq(attachmentAsset.storageKey, storageKey),
+          eq(attachmentAsset.userId, userId)
+        )
+      )
+      .limit(1);
+
+    return selectedAttachment ?? null;
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to get attachment asset by storage key"
+    );
+  }
+}
+
+export async function getAttachmentAssetsByIds({
+  ids,
+  userId,
+}: {
+  ids: string[];
+  userId: string;
+}) {
+  try {
+    if (ids.length === 0) {
+      return [];
+    }
+
+    return await db
+      .select()
+      .from(attachmentAsset)
+      .where(
+        and(
+          eq(attachmentAsset.userId, userId),
+          inArray(attachmentAsset.id, ids)
+        )
+      );
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to get attachment assets by ids"
+    );
+  }
+}
+
+export async function updateAttachmentAssetStatus({
+  error,
+  extractedText,
+  id,
+  status,
+  truncated,
+}: {
+  error?: string | null;
+  extractedText?: string | null;
+  id: string;
+  status: AttachmentAssetStatus;
+  truncated?: boolean;
+}) {
+  try {
+    const [updatedAttachment] = await db
+      .update(attachmentAsset)
+      .set({
+        status,
+        error: error ?? null,
+        extractedText:
+          typeof extractedText === "undefined"
+            ? sql`${attachmentAsset.extractedText}`
+            : extractedText,
+        truncated:
+          typeof truncated === "undefined"
+            ? sql`${attachmentAsset.truncated}`
+            : truncated,
+        updatedAt: new Date(),
+      })
+      .where(eq(attachmentAsset.id, id))
+      .returning();
+
+    return updatedAttachment ?? null;
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to update attachment asset status"
+    );
+  }
+}
+
+export async function replaceAttachmentChunks({
+  attachmentId,
+  chatId,
+  chunks,
+  userId,
+}: {
+  attachmentId: string;
+  chatId: string;
+  chunks: { embedding: number[]; text: string }[];
+  userId: string;
+}) {
+  try {
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(attachmentChunk)
+        .where(eq(attachmentChunk.attachmentId, attachmentId));
+
+      if (chunks.length === 0) {
+        return;
+      }
+
+      await tx.insert(attachmentChunk).values(
+        chunks.map((chunk, index) => ({
+          attachmentId,
+          userId,
+          chatId,
+          chunkIndex: index,
+          text: chunk.text,
+          embedding: chunk.embedding,
+        }))
+      );
+    });
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to replace attachment chunks"
+    );
+  }
+}
+
+export async function deleteAttachmentAssetById({
+  id,
+  userId,
+}: {
+  id: string;
+  userId: string;
+}) {
+  try {
+    const [deletedAttachment] = await db
+      .delete(attachmentAsset)
+      .where(
+        and(eq(attachmentAsset.id, id), eq(attachmentAsset.userId, userId))
+      )
+      .returning();
+
+    return deletedAttachment ?? null;
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to delete attachment asset by id"
+    );
+  }
+}
+
+export async function deleteAttachmentAssetByStorageKey({
+  storageKey,
+  userId,
+}: {
+  storageKey: string;
+  userId: string;
+}) {
+  try {
+    const [deletedAttachment] = await db
+      .delete(attachmentAsset)
+      .where(
+        and(
+          eq(attachmentAsset.storageKey, storageKey),
+          eq(attachmentAsset.userId, userId)
+        )
+      )
+      .returning();
+
+    return deletedAttachment ?? null;
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to delete attachment asset by storage key"
+    );
+  }
+}
+
+export async function deleteAttachmentAssetsByChatId({
+  chatId,
+  userId,
+}: {
+  chatId: string;
+  userId: string;
+}) {
+  try {
+    return await db
+      .delete(attachmentAsset)
+      .where(
+        and(
+          eq(attachmentAsset.chatId, chatId),
+          eq(attachmentAsset.userId, userId)
+        )
+      )
+      .returning();
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to delete attachment assets by chat id"
+    );
+  }
+}
+
+export async function deleteAttachmentAssetsByUserId({
+  userId,
+}: {
+  userId: string;
+}) {
+  try {
+    return await db
+      .delete(attachmentAsset)
+      .where(eq(attachmentAsset.userId, userId))
+      .returning();
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to delete attachment assets by user id"
+    );
+  }
+}
+
+export async function getAttachmentAssetsByChatId({
+  chatId,
+  userId,
+}: {
+  chatId: string;
+  userId: string;
+}) {
+  try {
+    return await db
+      .select()
+      .from(attachmentAsset)
+      .where(
+        and(
+          eq(attachmentAsset.chatId, chatId),
+          eq(attachmentAsset.userId, userId)
+        )
+      );
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to get attachment assets by chat id"
+    );
+  }
+}
+
+export async function getAttachmentAssetsByUserId({
+  userId,
+}: {
+  userId: string;
+}) {
+  try {
+    return await db
+      .select()
+      .from(attachmentAsset)
+      .where(eq(attachmentAsset.userId, userId));
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to get attachment assets by user id"
+    );
+  }
+}
+
+export async function retrieveRelevantAttachmentChunks({
+  attachmentIds,
+  chatId,
+  embedding,
+  limit,
+  userId,
+}: {
+  attachmentIds?: string[];
+  chatId: string;
+  embedding: number[];
+  limit: number;
+  userId: string;
+}) {
+  try {
+    const distance = cosineDistance(attachmentChunk.embedding, embedding);
+
+    return await db
+      .select({
+        attachmentId: attachmentChunk.attachmentId,
+        filename: attachmentAsset.filename,
+        text: attachmentChunk.text,
+        distance,
+      })
+      .from(attachmentChunk)
+      .innerJoin(
+        attachmentAsset,
+        eq(attachmentChunk.attachmentId, attachmentAsset.id)
+      )
+      .where(
+        and(
+          eq(attachmentChunk.userId, userId),
+          eq(attachmentChunk.chatId, chatId),
+          eq(attachmentAsset.status, "ready"),
+          attachmentIds && attachmentIds.length > 0
+            ? inArray(attachmentChunk.attachmentId, attachmentIds)
+            : undefined
+        )
+      )
+      .orderBy(distance)
+      .limit(limit);
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to retrieve relevant attachment chunks"
+    );
   }
 }
 
