@@ -120,16 +120,6 @@ export function AppSidebar({ user }: { user: User | undefined }) {
                 </SidebarMenuItem>
                 {user && (
                   <SidebarMenuItem>
-                    <SidebarMenuButton asChild tooltip="Billing">
-                      <Link href="/billing" onClick={() => setOpenMobile(false)}>
-                        <CreditCardIcon className="size-4" />
-                        <span className="text-[13px]">Billing</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                )}
-                {user && (
-                  <SidebarMenuItem>
                     <SidebarMenuButton
                       className="rounded-lg text-sidebar-foreground/40 transition-colors duration-150 hover:bg-destructive/10 hover:text-destructive"
                       onClick={() => setShowDeleteAllDialog(true)}
@@ -145,7 +135,23 @@ export function AppSidebar({ user }: { user: User | undefined }) {
           </SidebarGroup>
           <SidebarHistory user={user} />
         </SidebarContent>
-        <SidebarFooter className="border-t border-sidebar-border pt-2 pb-3">
+        <SidebarFooter className="border-sidebar-border pt-2 pb-3">
+          <SidebarMenu className='pb-2'>
+            {user && (
+              <SidebarMenuItem>
+                <SidebarMenuButton 
+                  asChild 
+                  tooltip="Billing"
+                  className="rounded-lg text-sidebar-foreground/40 transition-colors duration-150 hover:bg-primary/10 hover:text-primary"
+                >
+                  <Link href="/billing" onClick={() => setOpenMobile(false)}>
+                    <CreditCardIcon className="size-4" />
+                    <span className="text-[13px]">Billing</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
+          </SidebarMenu>
           {user && <SidebarUserNav user={user} />}
         </SidebarFooter>
         <SidebarRail />

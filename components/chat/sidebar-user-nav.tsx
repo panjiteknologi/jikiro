@@ -14,7 +14,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { guestRegex } from "@/lib/constants";
-import { ChevronUp, CreditCardIcon } from "lucide-react";
+import { ChevronUp } from "lucide-react";
 import type { User } from "next-auth";
 import { signOut, useSession } from "next-auth/react";
 import { useTheme } from "next-themes";
@@ -101,13 +101,6 @@ export function SidebarUserNav({ user }: { user: User }) {
               }
             >
               {`Toggle ${resolvedTheme === "light" ? "dark" : "light"} mode`}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="cursor-pointer text-[13px]"
-              onSelect={() => router.push("/billing")}
-            >
-              <CreditCardIcon className="mr-2 size-3.5" />
-              Billing
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild data-testid="user-nav-item-auth">
