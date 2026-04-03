@@ -13,20 +13,17 @@ import {
   SidebarGroupContent,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
   SidebarTrigger,
-  useSidebar,
+  useSidebar
 } from "@/components/ui/sidebar";
 import Jikiro from '@/public/svg/jikiro';
 import {
   CreditCardIcon,
-  FolderOpen,
   PanelLeftIcon,
   PenSquareIcon,
-  Plus,
   TrashIcon
 } from "lucide-react";
 import type { User } from "next-auth";
@@ -47,6 +44,7 @@ import {
   AlertDialogTitle,
 } from "../ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import { SidebarProjects } from './sidebar-projects';
 
 export function AppSidebar({ user }: { user: User | undefined }) {
   const router = useRouter();
@@ -123,24 +121,6 @@ export function AppSidebar({ user }: { user: User | undefined }) {
                 </SidebarMenuItem>
                 {user && (
                   <SidebarMenuItem>
-                    <SidebarMenuButton 
-                      asChild 
-                      tooltip="Projects"
-                      className="rounded-lg text-sidebar-foreground/40 transition-colors duration-150 hover:bg-primary/10 hover:text-primary"
-                    >
-                      <Link href="/projects" onClick={() => setOpenMobile(false)}>
-                        <FolderOpen className="size-4" />
-                        <span className="text-[13px]">Projects</span>
-                      </Link>
-                    </SidebarMenuButton>
-
-                    <SidebarMenuAction>
-                      <Plus className="size-4" />
-                    </SidebarMenuAction>
-                  </SidebarMenuItem>
-                )}
-                {user && (
-                  <SidebarMenuItem>
                     <SidebarMenuButton
                       className="rounded-lg text-sidebar-foreground/40 transition-colors duration-150 hover:bg-destructive/10 hover:text-destructive"
                       onClick={() => setShowDeleteAllDialog(true)}
@@ -154,6 +134,7 @@ export function AppSidebar({ user }: { user: User | undefined }) {
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
+          <SidebarProjects />
           <SidebarHistory user={user} />
         </SidebarContent>
         <SidebarFooter className="border-sidebar-border pt-2 pb-3">
