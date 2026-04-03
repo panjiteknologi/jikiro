@@ -3,14 +3,14 @@
 ## Project Creation
 > Plan: [doc/plans/project-creation.md](../plans/project-creation.md)
 
-- [ ] Add `Project` table to `lib/db/schema.ts`
-- [ ] Generate and run migration
-- [ ] Add project CRUD queries to `lib/db/queries.ts`
+- [x] Add `Project` table to `lib/db/schema.ts`
+- [x] Generate and run migration
+- [x] Add project CRUD queries to `lib/db/queries.ts`
 - [ ] Build project list & create UI on `app/projects/`
 - [ ] Add project switcher to sidebar
-- [ ] Scope chat history to active project
-- [ ] Add optional system prompt field per project
-- [ ] Gate behind `features.projects` entitlement check
+- [x] Scope chat history to active project (`projectId` FK on Chat, `getChatsByUserId` filter)
+- [x] Add optional system prompt field per project
+- [x] Gate behind `features.projects` entitlement check (POST /api/projects)
 - [ ] Add E2E test for project creation flow
 
 ---

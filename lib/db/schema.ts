@@ -199,6 +199,19 @@ export const aiGenerationUsage = pgTable("AiGenerationUsage", {
 
 export type AiGenerationUsage = InferSelectModel<typeof aiGenerationUsage>;
 
+export const project = pgTable("Project", {
+  id: uuid("id").primaryKey().notNull().defaultRandom(),
+  userId: uuid("userId")
+    .notNull()
+    .references(() => user.id),
+  name: text("name").notNull(),
+  systemPrompt: text("systemPrompt"),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+});
+
+export type Project = InferSelectModel<typeof project>;
+
 export const chat = pgTable("Chat", {
   id: uuid("id").primaryKey().notNull().defaultRandom(),
   createdAt: timestamp("createdAt").notNull(),
@@ -206,6 +219,9 @@ export const chat = pgTable("Chat", {
   userId: uuid("userId")
     .notNull()
     .references(() => user.id),
+  projectId: uuid("projectId").references(() => project.id, {
+    onDelete: "set null",
+  }),
   visibility: varchar("visibility", { enum: ["public", "private"] })
     .notNull()
     .default("private"),

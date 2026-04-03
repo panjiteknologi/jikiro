@@ -17,7 +17,8 @@ export type Surface =
   | "vote"
   | "document"
   | "suggestions"
-  | "activate_gateway";
+  | "activate_gateway"
+  | "project";
 
 export type ErrorCode = `${ErrorType}:${Surface}`;
 
@@ -35,6 +36,7 @@ export const visibilityBySurface: Record<Surface, ErrorVisibility> = {
   document: "response",
   suggestions: "response",
   activate_gateway: "response",
+  project: "response",
 };
 
 export class ChatbotError extends Error {
@@ -119,6 +121,15 @@ export function getMessageByErrorCode(errorCode: ErrorCode): string {
       return "You need to sign in to view this document. Please sign in and try again.";
     case "bad_request:document":
       return "The request to create or update the document was invalid. Please check your input and try again.";
+
+    case "unauthorized:project":
+      return "You need to sign in to manage projects.";
+    case "forbidden:project":
+      return "This project belongs to another user.";
+    case "not_found:project":
+      return "The requested project was not found.";
+    case "bad_request:project":
+      return "The project request could not be processed. Please check your input.";
 
     default:
       return "Something went wrong. Please try again later.";

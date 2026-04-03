@@ -36,6 +36,13 @@
       "when": 1775137834217,
       "tag": "0004_foamy_jackal",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1775230078174,
+      "tag": "0005_right_jean_grey",
+      "breakpoints": true
     }
   ]
 }

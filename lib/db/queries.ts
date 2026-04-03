@@ -32,6 +32,8 @@ import {
   type DBMessage,
   document,
   message,
+  type Project,
+  project,
   type Suggestion,
   stream,
   suggestion,
@@ -209,11 +211,13 @@ export async function saveChat({
   userId,
   title,
   visibility,
+  projectId,
 }: {
   id: string;
   userId: string;
   title: string;
   visibility: VisibilityType;
+  projectId?: string | null;
 }) {
   try {
     return await db.insert(chat).values({
@@ -222,6 +226,7 @@ export async function saveChat({
       userId,
       title,
       visibility,
+      projectId: projectId ?? null,
     });
   } catch (_error) {
     throw new ChatbotError("bad_request:database", "Failed to save chat");
@@ -299,24 +304,32 @@ export async function getChatsByUserId({
   limit,
   startingAfter,
   endingBefore,
+  projectId,
 }: {
   id: string;
   limit: number;
   startingAfter: string | null;
   endingBefore: string | null;
+  projectId?: string | null;
 }) {
   try {
     const extendedLimit = limit + 1;
+
+    const baseCondition =
+      projectId !== undefined
+        ? and(
+            eq(chat.userId, id),
+            projectId === null
+              ? sql`${chat.projectId} is null`
+              : eq(chat.projectId, projectId)
+          )
+        : eq(chat.userId, id);
 
     const query = (whereCondition?: SQL<unknown>) =>
       db
         .select()
         .from(chat)
-        .where(
-          whereCondition
-            ? and(whereCondition, eq(chat.userId, id))
-            : eq(chat.userId, id)
-        )
+        .where(whereCondition ? and(whereCondition, baseCondition) : baseCondition)
         .orderBy(desc(chat.createdAt))
         .limit(extendedLimit);
 
@@ -1204,6 +1217,138 @@ export async function getStreamIdsByChatId({ chatId }: { chatId: string }) {
     throw new ChatbotError(
       "bad_request:database",
       "Failed to get stream ids by chat id"
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Project queries
+// ---------------------------------------------------------------------------
+
+export async function createProject({
+  userId,
+  name,
+  systemPrompt,
+}: {
+  userId: string;
+  name: string;
+  systemPrompt?: string | null;
+}): Promise<Project> {
+  try {
+    const [created] = await db
+      .insert(project)
+      .values({
+        userId,
+        name,
+        systemPrompt: systemPrompt ?? null,
+      })
+      .returning();
+
+    return created;
+  } catch (_error) {
+    throw new ChatbotError("bad_request:database", "Failed to create project");
+  }
+}
+
+export async function getProjectsByUserId({
+  userId,
+}: {
+  userId: string;
+}): Promise<Project[]> {
+  try {
+    return await db
+      .select()
+      .from(project)
+      .where(eq(project.userId, userId))
+      .orderBy(desc(project.createdAt));
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to get projects by user id"
+    );
+  }
+}
+
+export async function getProjectById({
+  id,
+  userId,
+}: {
+  id: string;
+  userId: string;
+}): Promise<Project | null> {
+  try {
+    const [row] = await db
+      .select()
+      .from(project)
+      .where(and(eq(project.id, id), eq(project.userId, userId)))
+      .limit(1);
+
+    return row ?? null;
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to get project by id"
+    );
+  }
+}
+
+export async function updateProject({
+  id,
+  userId,
+  name,
+  systemPrompt,
+}: {
+  id: string;
+  userId: string;
+  name?: string;
+  systemPrompt?: string | null;
+}): Promise<Project | null> {
+  try {
+    const updates: Partial<typeof project.$inferInsert> = {
+      updatedAt: new Date(),
+    };
+
+    if (name !== undefined) {
+      updates.name = name;
+    }
+
+    if (systemPrompt !== undefined) {
+      updates.systemPrompt = systemPrompt;
+    }
+
+    const [updated] = await db
+      .update(project)
+      .set(updates)
+      .where(and(eq(project.id, id), eq(project.userId, userId)))
+      .returning();
+
+    return updated ?? null;
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to update project"
+    );
+  }
+}
+
+export async function deleteProject({
+  id,
+  userId,
+}: {
+  id: string;
+  userId: string;
+}): Promise<Project | null> {
+  try {
+    const [deleted] = await db
+      .delete(project)
+      .where(and(eq(project.id, id), eq(project.userId, userId)))
+      .returning();
+
+    return deleted ?? null;
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to delete project"
     );
   }
 }

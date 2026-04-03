@@ -1,1 +1,1 @@
-ALTER TABLE "User" ADD COLUMN "selectedModelIds" json;
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "selectedModelIds" json;
