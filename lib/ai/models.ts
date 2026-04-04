@@ -10,6 +10,16 @@ export const PAID_MODEL_IDS = [
   "openai/gpt-5",
 ] as const;
 
+export const VISION_MODEL_BY_TIER = {
+  pro: "google/gemini-2.5-flash",
+  max: "google/gemini-2.5-pro",
+} as const;
+
+export const IMAGE_GEN_MODEL_BY_TIER = {
+  pro: "google/gemini-2.5-flash-image",
+  max: "google/gemini-3.1-flash-image-preview",
+} as const;
+
 export const titleModel = {
   id: "mistral/mistral-small",
   name: "Mistral Small",
@@ -77,16 +87,39 @@ const curatedModelOverrides: ChatModel[] = [
     description: "Flagship GPT-5 model for premium workloads",
     reasoningEffort: "medium",
   },
+  {
+    id: "google/gemini-2.5-flash-image",
+    name: "Gemini 2.5 Flash Image",
+    provider: "google",
+    description: "Fast multimodal Gemini model with vision",
+  },
+  {
+    id: "google/gemini-3.1-flash-image-preview",
+    name: "Gemini 3.1 Flash Image Preview",
+    provider: "google",
+    description: "High-capability Gemini model for complex vision tasks",
+  },
+];
+
+const imageGenModelIds = [
+  "google/gemini-2.5-flash-image",
+  "google/gemini-3.1-flash-image-preview",
 ];
 
 const fallbackGatewayModels: FallbackGatewayModel[] = curatedModelOverrides.map(
   (model) => ({
     ...model,
-    capabilities: {
-      tools: true,
-      vision: ["openai/gpt-4o"].includes(model.id),
-      reasoning: ["openai/gpt-5-mini", "openai/gpt-5"].includes(model.id),
-    },
+    capabilities: imageGenModelIds.includes(model.id)
+      ? { tools: false, vision: false, reasoning: false }
+      : {
+          tools: true,
+          vision: [
+            "openai/gpt-4o",
+            "google/gemini-2.5-flash",
+            "google/gemini-2.5-pro",
+          ].includes(model.id),
+          reasoning: ["openai/gpt-5-mini", "openai/gpt-5"].includes(model.id),
+        },
   })
 );
 

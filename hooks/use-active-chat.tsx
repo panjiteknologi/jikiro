@@ -45,6 +45,10 @@ type ActiveChatContextValue = {
   votes: Vote[] | undefined;
   currentModelId: string;
   setCurrentModelId: (id: string) => void;
+  isReasoningEnabled: boolean;
+  setIsReasoningEnabled: Dispatch<SetStateAction<boolean>>;
+  isImageModeEnabled: boolean;
+  setIsImageModeEnabled: Dispatch<SetStateAction<boolean>>;
   showCreditCardAlert: boolean;
   setShowCreditCardAlert: Dispatch<SetStateAction<boolean>>;
 };
@@ -78,6 +82,18 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     currentModelIdRef.current = currentModelId;
   }, [currentModelId]);
+
+  const [isReasoningEnabled, setIsReasoningEnabled] = useState(false);
+  const isReasoningEnabledRef = useRef(isReasoningEnabled);
+  useEffect(() => {
+    isReasoningEnabledRef.current = isReasoningEnabled;
+  }, [isReasoningEnabled]);
+
+  const [isImageModeEnabled, setIsImageModeEnabled] = useState(false);
+  const isImageModeEnabledRef = useRef(isImageModeEnabled);
+  useEffect(() => {
+    isImageModeEnabledRef.current = isImageModeEnabled;
+  }, [isImageModeEnabled]);
 
   const [input, setInput] = useState("");
   const [showCreditCardAlert, setShowCreditCardAlert] = useState(false);
@@ -144,6 +160,8 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
               : { message: lastMessage }),
             selectedChatModel: currentModelIdRef.current,
             selectedVisibilityType: "private",
+            reasoningEnabled: isReasoningEnabledRef.current,
+            imageMode: isImageModeEnabledRef.current,
             ...request.body,
           },
         };
@@ -260,6 +278,10 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       votes,
       currentModelId,
       setCurrentModelId,
+      isReasoningEnabled,
+      setIsReasoningEnabled,
+      isImageModeEnabled,
+      setIsImageModeEnabled,
       showCreditCardAlert,
       setShowCreditCardAlert,
     }),
@@ -279,6 +301,8 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       isLoading,
       votes,
       currentModelId,
+      isReasoningEnabled,
+      isImageModeEnabled,
       showCreditCardAlert,
     ]
   );

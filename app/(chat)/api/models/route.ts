@@ -28,5 +28,5 @@ export async function GET() {
     ({ capabilities: _capabilities, ...model }) => model
   );
 
-  return Response.json({ capabilities, models: allowedModels }, { headers });
+  return Response.json({ capabilities, models: allowedModels, tier: entitlements.tier }, { headers });
 }

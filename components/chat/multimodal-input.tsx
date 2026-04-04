@@ -3,7 +3,7 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import equal from "fast-deep-equal";
-import { ArrowUpIcon, BrainIcon, EyeIcon, WrenchIcon } from "lucide-react";
+import { ArrowUpIcon, BrainIcon, EyeIcon, ImageIcon, WrenchIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useSession } from "next-auth/react";
@@ -88,6 +88,10 @@ function PureMultimodalInput({
   selectedVisibilityType,
   selectedModelId,
   onModelChange,
+  isReasoningEnabled = false,
+  onReasoningToggle,
+  isImageModeEnabled = false,
+  onImageModeToggle,
   editingMessage,
   onCancelEdit,
   isLoading,
@@ -108,6 +112,10 @@ function PureMultimodalInput({
   selectedVisibilityType: VisibilityType;
   selectedModelId: string;
   onModelChange?: (modelId: string) => void;
+  isReasoningEnabled?: boolean;
+  onReasoningToggle?: () => void;
+  isImageModeEnabled?: boolean;
+  onImageModeToggle?: () => void;
   editingMessage?: ChatMessage | null;
   onCancelEdit?: () => void;
   isLoading?: boolean;
@@ -115,6 +123,16 @@ function PureMultimodalInput({
   const router = useRouter();
   const { data: session } = useSession();
   const { setTheme, resolvedTheme } = useTheme();
+  const { data: modelsData } = useSWR(
+    `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/models`,
+    (url: string) => fetch(url).then((r) => r.json()),
+    { revalidateOnFocus: false, dedupingInterval: 3_600_000 }
+  );
+  const allCapabilities: Record<string, ModelCapabilities> | undefined =
+    modelsData?.capabilities;
+  const selectedModelCapabilities = allCapabilities?.[selectedModelId];
+  const tier: string | undefined = modelsData?.tier;
+  const canUseImageMode = tier === "pro" || tier === "max";
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { width } = useWindowSize();
   const hasAutoFocused = useRef(false);
@@ -657,7 +675,11 @@ function PureMultimodalInput({
             }
           }}
           placeholder={
-            editingMessage ? "Edit your message..." : "Ask anything..."
+            editingMessage
+              ? "Edit your message..."
+              : isImageModeEnabled
+                ? "Describe the image you want to generate..."
+                : "Ask anything..."
           }
           ref={textareaRef}
           value={input}
@@ -669,10 +691,50 @@ function PureMultimodalInput({
               selectedModelId={selectedModelId}
               status={status}
             />
-            <ModelSelectorCompact
-              onModelChange={onModelChange}
-              selectedModelId={selectedModelId}
-            />
+            {!isImageModeEnabled && selectedModelCapabilities?.reasoning && onReasoningToggle && (
+              <Button
+                className={cn(
+                  "h-7 gap-1.5 rounded-lg px-2 text-xs transition-colors",
+                  isReasoningEnabled
+                    ? "bg-primary/10 text-primary hover:bg-primary/15"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+                onClick={onReasoningToggle}
+                title={isReasoningEnabled ? "Reasoning: ON" : "Reasoning: OFF"}
+                type="button"
+                variant="ghost"
+              >
+                <BrainIcon className="size-3.5" />
+                <span className="hidden sm:inline">
+                  {isReasoningEnabled ? "Thinking" : "Think"}
+                </span>
+              </Button>
+            )}
+            {canUseImageMode && onImageModeToggle && (
+              <Button
+                className={cn(
+                  "h-7 gap-1.5 rounded-lg px-2 text-xs transition-colors",
+                  isImageModeEnabled
+                    ? "bg-primary/10 text-primary hover:bg-primary/15"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+                onClick={onImageModeToggle}
+                title={isImageModeEnabled ? "Image mode: ON" : "Image mode: OFF"}
+                type="button"
+                variant="ghost"
+              >
+                <ImageIcon className="size-3.5" />
+                <span className="hidden sm:inline">
+                  {isImageModeEnabled ? "Imaging" : "Image"}
+                </span>
+              </Button>
+            )}
+            {!isImageModeEnabled && (
+              <ModelSelectorCompact
+                onModelChange={onModelChange}
+                selectedModelId={selectedModelId}
+              />
+            )}
           </PromptInputTools>
 
           {status === "submitted" ? (
@@ -715,6 +777,12 @@ export const MultimodalInput = memo(
       return false;
     }
     if (prevProps.selectedModelId !== nextProps.selectedModelId) {
+      return false;
+    }
+    if (prevProps.isReasoningEnabled !== nextProps.isReasoningEnabled) {
+      return false;
+    }
+    if (prevProps.isImageModeEnabled !== nextProps.isImageModeEnabled) {
       return false;
     }
     if (prevProps.editingMessage !== nextProps.editingMessage) {

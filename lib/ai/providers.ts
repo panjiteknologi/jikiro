@@ -35,6 +35,10 @@ export function getTitleModel() {
   return gateway.languageModel(titleModel.id);
 }
 
+export function getImageModel(modelId: string) {
+  return gateway.imageModel(modelId);
+}
+
 export function getEmbeddingModel() {
   const modelId = process.env.AI_EMBEDDING_MODEL;
 

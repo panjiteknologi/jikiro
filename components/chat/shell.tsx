@@ -44,6 +44,10 @@ export function ChatShell() {
     votes,
     currentModelId,
     setCurrentModelId,
+    isReasoningEnabled,
+    setIsReasoningEnabled,
+    isImageModeEnabled,
+    setIsImageModeEnabled,
     showCreditCardAlert,
     setShowCreditCardAlert,
   } = useActiveChat();
@@ -120,7 +124,21 @@ export function ChatShell() {
                     setEditingMessage(null);
                     setInput("");
                   }}
+                  isReasoningEnabled={isReasoningEnabled}
+                  isImageModeEnabled={isImageModeEnabled}
                   onModelChange={setCurrentModelId}
+                  onReasoningToggle={() => {
+                    setIsReasoningEnabled((v) => {
+                      if (!v) setIsImageModeEnabled(false);
+                      return !v;
+                    });
+                  }}
+                  onImageModeToggle={() => {
+                    setIsImageModeEnabled((v) => {
+                      if (!v) setIsReasoningEnabled(false);
+                      return !v;
+                    });
+                  }}
                   selectedModelId={currentModelId}
                   selectedVisibilityType={visibilityType}
                   sendMessage={

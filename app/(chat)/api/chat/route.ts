@@ -6,6 +6,7 @@ import {
   createUIMessageStreamResponse,
   embed,
   generateId,
+  generateImage,
   pruneMessages,
   stepCountIs,
   streamText,
@@ -18,9 +19,11 @@ import {
   DEFAULT_CHAT_MODEL,
   getCapabilities,
   getGatewayModelById,
+  IMAGE_GEN_MODEL_BY_TIER,
+  VISION_MODEL_BY_TIER,
 } from "@/lib/ai/models";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
-import { getEmbeddingModel, getLanguageModel } from "@/lib/ai/providers";
+import { getEmbeddingModel, getImageModel, getLanguageModel } from "@/lib/ai/providers";
 import { createDocument } from "@/lib/ai/tools/create-document";
 import { editDocument } from "@/lib/ai/tools/edit-document";
 import { getWeather } from "@/lib/ai/tools/get-weather";
@@ -58,6 +61,7 @@ import {
   getMessagesByChatId,
   retrieveRelevantAttachmentChunks,
   saveChat,
+  saveDocument,
   saveMessages,
   updateChatTitleById,
   updateMessage,
@@ -310,7 +314,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { id, message, messages, selectedChatModel } = requestBody;
+    const { id, message, messages, selectedChatModel, reasoningEnabled, imageMode } = requestBody;
 
     const [, session] = await Promise.all([
       checkBotId().catch(() => null),
@@ -329,10 +333,29 @@ export async function POST(request: Request) {
       userType,
     });
     const allowedModelIds = new Set(billingState.entitlements.allowedModelIds);
-    const chatModel = allowedModelIds.has(selectedChatModel)
+    let chatModel = allowedModelIds.has(selectedChatModel)
       ? selectedChatModel
       : (getFallbackModelId(billingState.entitlements.allowedModelIds) ??
         DEFAULT_CHAT_MODEL);
+
+    // Auto-route to vision model if message contains image attachments
+    const hasImageAttachments =
+      message?.parts.some(
+        (part) =>
+          part.type === "file" && isImageAttachmentMimeType(part.mediaType)
+      ) ?? false;
+
+    if (hasImageAttachments) {
+      const allCapabilities = await getCapabilities();
+      if (!allCapabilities[chatModel]?.vision) {
+        const tier = billingState.entitlements.tier;
+        if (tier === "max") {
+          chatModel = VISION_MODEL_BY_TIER.max;
+        } else if (tier === "pro") {
+          chatModel = VISION_MODEL_BY_TIER.pro;
+        }
+      }
+    }
 
     if (
       billingState.remainingCredits !== null &&
@@ -369,6 +392,105 @@ export async function POST(request: Request) {
         visibility: "private",
       });
       titlePromise = generateTitleFromUserMessage({ message });
+    }
+
+    // Image generation mode (Pro/Max only)
+    if (imageMode) {
+      const tier = billingState.entitlements.tier;
+      if (tier === "free") {
+        return new ChatbotError("forbidden:billing").toResponse();
+      }
+
+      const textPrompt = message?.parts
+        .filter((p): p is { type: "text"; text: string } => p.type === "text")
+        .map((p) => p.text)
+        .join(" ")
+        .trim();
+
+      if (!textPrompt) {
+        return new ChatbotError("bad_request:api").toResponse();
+      }
+
+      if (message?.role === "user") {
+        await saveMessages({
+          messages: [
+            {
+              chatId: id,
+              id: message.id,
+              role: "user",
+              parts: message.parts,
+              attachments: [],
+              createdAt: new Date(),
+            },
+          ],
+        });
+      }
+
+      const imageModelId =
+        tier === "max"
+          ? IMAGE_GEN_MODEL_BY_TIER.max
+          : IMAGE_GEN_MODEL_BY_TIER.pro;
+      const documentId = generateId();
+
+      const imageStream = createUIMessageStream({
+        execute: async ({ writer: dataStream }) => {
+          dataStream.write({ type: "data-kind", data: "image", transient: true });
+          dataStream.write({ type: "data-id", data: documentId, transient: true });
+          dataStream.write({ type: "data-title", data: "Generated Image", transient: true });
+          dataStream.write({ type: "data-clear", data: null, transient: true });
+
+          const { image } = await generateImage({
+            model: getImageModel(imageModelId),
+            prompt: textPrompt,
+          });
+
+          dataStream.write({ type: "data-imageDelta", data: image.base64, transient: true });
+          dataStream.write({ type: "data-finish", data: null, transient: true });
+
+          await saveDocument({
+            id: documentId,
+            title: "Generated Image",
+            content: image.base64,
+            kind: "image",
+            userId: session.user.id,
+          });
+
+          const assistantMsgId = generateId();
+          await saveMessages({
+            messages: [
+              {
+                chatId: id,
+                id: assistantMsgId,
+                role: "assistant",
+                parts: [{ type: "text", text: "Here's your generated image." }],
+                attachments: [],
+                createdAt: new Date(),
+              },
+            ],
+          });
+
+          if (titlePromise) {
+            const title = await titlePromise;
+            dataStream.write({ type: "data-chat-title", data: title });
+            updateChatTitleById({ chatId: id, title });
+          }
+
+          after(async () => {
+            await recordAiUsage({
+              billingState,
+              chatId: id,
+              modelId: imageModelId,
+              providerName: imageModelId.split("/")[0],
+              usageKind: "chat_generation",
+              userId: session.user.id,
+              userType,
+            });
+          });
+        },
+        generateId: generateUUID,
+      });
+
+      return createUIMessageStreamResponse({ stream: imageStream });
     }
 
     let uiMessages: ChatMessage[];
@@ -539,8 +661,13 @@ export async function POST(request: Request) {
               },
               user: session.user.id,
             },
-            ...(modelConfig?.reasoningEffort && {
-              openai: { reasoningEffort: modelConfig.reasoningEffort },
+            ...(isReasoningModel && {
+              openai: {
+                reasoningEffort:
+                  reasoningEnabled === false
+                    ? "none"
+                    : (modelConfig?.reasoningEffort ?? "medium"),
+              },
             }),
           },
           onFinish: async (event) => {
