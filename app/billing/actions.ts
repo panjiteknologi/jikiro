@@ -28,13 +28,6 @@ export async function createTripayCheckout({
     };
   }
 
-  if (session.user.type === "guest") {
-    return {
-      error: "Guest sessions need a registered account before upgrading.",
-      ok: false as const,
-    };
-  }
-
   if (!isPaidPlan(planSlug)) {
     return {
       error: "Free users do not need checkout.",

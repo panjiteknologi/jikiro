@@ -2,16 +2,12 @@ export const DEFAULT_CHAT_MODEL = "deepseek/deepseek-v3.2";
 
 export const FREE_MODEL_IDS = [
   "deepseek/deepseek-v3.2",
-  "google/gemini-2.0-flash-lite",
-  "minimax/minimax-m2.5",
-  "openai/gpt-5-nano",
-  "anthropic/claude-3.5-haiku",
 ] as const;
 
-export const GUEST_MODEL_IDS = [
-  DEFAULT_CHAT_MODEL,
-  "mistral/mistral-small",
-  "openai/gpt-5-nano",
+export const PAID_MODEL_IDS = [
+  "openai/gpt-4o",
+  "openai/gpt-5-mini",
+  "openai/gpt-5",
 ] as const;
 
 export const titleModel = {
@@ -62,53 +58,10 @@ const curatedModelOverrides: ChatModel[] = [
     gatewayOrder: ["bedrock", "deepinfra"],
   },
   {
-    id: "google/gemini-2.0-flash-lite",
-    name: "Gemini 2.0 Flash Lite",
-    provider: "google",
-    description: "Low-cost Gemini model for lightweight chats",
-  },
-  {
-    id: "minimax/minimax-m2.5",
-    name: "MiniMax M2.5",
-    provider: "minimax",
-    description: "Balanced general-purpose model for fast responses",
-  },
-  {
-    id: "openai/gpt-5-nano",
-    name: "GPT-5 Nano",
+    id: "openai/gpt-4o",
+    name: "GPT-4o",
     provider: "openai",
-    description: "Fastest GPT-5 tier for lightweight generation",
-    reasoningEffort: "minimal",
-  },
-  {
-    id: "anthropic/claude-3.5-haiku",
-    name: "Claude 3.5 Haiku",
-    provider: "anthropic",
-    description: "Fast Anthropic model for concise everyday tasks",
-  },
-  {
-    id: "anthropic/claude-sonnet-4.5",
-    name: "Claude Sonnet 4.5",
-    provider: "anthropic",
-    description: "Balanced Anthropic model for stronger reasoning",
-  },
-  {
-    id: "anthropic/claude-opus-4.1",
-    name: "Claude Opus 4.1",
-    provider: "anthropic",
-    description: "Flagship Anthropic model for advanced reasoning",
-  },
-  {
-    id: "google/gemini-2.5-flash",
-    name: "Gemini 2.5 Flash",
-    provider: "google",
-    description: "Fast multimodal Gemini model with tool use",
-  },
-  {
-    id: "google/gemini-2.5-pro",
-    name: "Gemini 2.5 Pro",
-    provider: "google",
-    description: "High-capability Gemini model for complex tasks",
+    description: "Powerful multimodal model with vision and tool use",
   },
   {
     id: "openai/gpt-5-mini",
@@ -124,70 +77,15 @@ const curatedModelOverrides: ChatModel[] = [
     description: "Flagship GPT-5 model for premium workloads",
     reasoningEffort: "medium",
   },
-  {
-    id: "mistral/codestral",
-    name: "Codestral",
-    provider: "mistral",
-    description: "Code-focused model with tool use",
-    gatewayOrder: ["mistral"],
-  },
-  {
-    id: "mistral/mistral-small",
-    name: "Mistral Small",
-    provider: "mistral",
-    description: "Fast vision model with tool use",
-    gatewayOrder: ["mistral"],
-  },
-  {
-    id: "openai/gpt-oss-20b",
-    name: "GPT OSS 20B",
-    provider: "openai",
-    description: "Compact reasoning model",
-    gatewayOrder: ["groq", "bedrock"],
-    reasoningEffort: "low",
-  },
-  {
-    id: "openai/gpt-oss-120b",
-    name: "GPT OSS 120B",
-    provider: "openai",
-    description: "Open-source 120B parameter model",
-    gatewayOrder: ["fireworks", "bedrock"],
-    reasoningEffort: "low",
-  },
-  {
-    id: "xai/grok-4.1-fast-non-reasoning",
-    name: "Grok 4.1 Fast",
-    provider: "xai",
-    description: "Fast non-reasoning model with tool use",
-    gatewayOrder: ["xai"],
-  },
 ];
 
 const fallbackGatewayModels: FallbackGatewayModel[] = curatedModelOverrides.map(
   (model) => ({
     ...model,
     capabilities: {
-      tools: ![
-        "google/gemini-2.0-flash-lite",
-        "openai/gpt-5-nano",
-        "anthropic/claude-3.5-haiku",
-      ].includes(model.id),
-      vision: [
-        "google/gemini-2.0-flash-lite",
-        "google/gemini-2.5-flash",
-        "google/gemini-2.5-pro",
-        "mistral/mistral-small",
-        "xai/grok-4.1-fast-non-reasoning",
-      ].includes(model.id),
-      reasoning: [
-        "anthropic/claude-sonnet-4.5",
-        "anthropic/claude-opus-4.1",
-        "google/gemini-2.5-pro",
-        "openai/gpt-5-mini",
-        "openai/gpt-5",
-        "openai/gpt-oss-20b",
-        "openai/gpt-oss-120b",
-      ].includes(model.id),
+      tools: true,
+      vision: ["openai/gpt-4o"].includes(model.id),
+      reasoning: ["openai/gpt-5-mini", "openai/gpt-5"].includes(model.id),
     },
   })
 );

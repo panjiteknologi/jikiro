@@ -45,7 +45,7 @@ async function BillingPageContent() {
       channels={channels}
       currentPlan={billingData.currentPlan}
       displayPlans={billingData.displayPlans}
-      isGuest={session.user.type === "guest"}
+      isGuest={false}
       recentCheckouts={billingData.recentCheckouts}
       remainingCredits={billingData.remainingCredits}
       showManageModels={session.user.type === "regular"}

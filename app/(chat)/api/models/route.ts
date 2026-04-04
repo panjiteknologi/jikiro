@@ -1,7 +1,7 @@
 import { auth } from "@/app/(auth)/auth";
 import { getAllGatewayModels } from "@/lib/ai/models";
-import { resolveEntitlementsForTier } from "@/lib/billing/plans";
 import { resolveBillingState } from "@/lib/billing/service";
+import { ChatbotError } from "@/lib/errors";
 
 export async function GET() {
   const headers = {
@@ -9,15 +9,15 @@ export async function GET() {
   };
 
   const [catalog, session] = await Promise.all([getAllGatewayModels(), auth()]);
-  const entitlements =
-    session?.user?.id && session.user.type
-      ? (
-          await resolveBillingState({
-            userId: session.user.id,
-            userType: session.user.type,
-          })
-        ).entitlements
-      : await resolveEntitlementsForTier({ tier: "guest" });
+
+  if (!session?.user?.id || !session.user.type) {
+    return new ChatbotError("unauthorized:chat").toResponse();
+  }
+
+  const { entitlements } = await resolveBillingState({
+    userId: session.user.id,
+    userType: session.user.type,
+  });
   const allowedModelsWithCapabilities = catalog.filter((model) =>
     entitlements.allowedModelIds.includes(model.id)
   );

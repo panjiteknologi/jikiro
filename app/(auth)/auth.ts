@@ -1,5 +1,5 @@
 import { DUMMY_PASSWORD } from "@/lib/constants";
-import { createGuestUser, createOAuthUser, getUser } from "@/lib/db/queries";
+import { createOAuthUser, getUser } from "@/lib/db/queries";
 import { compare } from "bcrypt-ts";
 import type { Account, Profile } from "next-auth";
 import NextAuth, { type DefaultSession } from "next-auth";
@@ -8,7 +8,7 @@ import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import { authConfig } from "./auth.config";
 
-export type UserType = "guest" | "regular";
+export type UserType = "regular";
 
 declare module "next-auth" {
   interface Session extends DefaultSession {
@@ -75,14 +75,6 @@ export const {
         }
 
         return { ...user, type: "regular" };
-      },
-    }),
-    Credentials({
-      id: "guest",
-      credentials: {},
-      async authorize() {
-        const [guestUser] = await createGuestUser();
-        return { ...guestUser, type: "guest" };
       },
     }),
   ],

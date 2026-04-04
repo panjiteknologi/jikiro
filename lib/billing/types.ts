@@ -4,7 +4,7 @@ export type PlanSlug = (typeof planSlugs)[number];
 export const billingIntervals = ["monthly", "yearly"] as const;
 export type BillingInterval = (typeof billingIntervals)[number];
 
-export const accessTiers = ["guest", ...planSlugs] as const;
+export const accessTiers = planSlugs;
 export type AccessTier = (typeof accessTiers)[number];
 
 export const subscriptionStatuses = [

@@ -50,7 +50,7 @@ export type ModelSettingsData = {
   freeModelIds: string[];
   selectedModelIds: string[];
   selectionLimit: number | null;
-  tier: Exclude<EffectiveEntitlements["tier"], "guest">;
+  tier: EffectiveEntitlements["tier"];
 };
 
 function addBillingInterval(start: Date, interval: "monthly" | "yearly") {
@@ -152,14 +152,6 @@ export async function resolveBillingState({
   userId: string;
   userType: UserType;
 }): Promise<ResolvedBillingState> {
-  if (userType === "guest") {
-    return {
-      entitlements: await resolveEntitlementsForTier({ tier: "guest" }),
-      remainingCredits: null,
-      subscription: null,
-    };
-  }
-
   const activeSubscription = await ensureRegularSubscription(userId);
 
   if (!activeSubscription) {
@@ -197,13 +189,10 @@ export async function getBillingPageData({
   userType: UserType;
 }) {
   const billingState = await resolveBillingState({ userId, userType });
-  const recentCheckouts =
-    userType === "guest"
-      ? []
-      : await getRecentBillingCheckoutsByUserId({
-          limit: 10,
-          userId,
-        });
+  const recentCheckouts = await getRecentBillingCheckoutsByUserId({
+    limit: 10,
+    userId,
+  });
 
   return {
     currentPlan: billingState.subscription?.planSnapshot ?? null,
@@ -249,10 +238,6 @@ export async function getModelSettingsData({
   userId: string;
   userType: UserType;
 }): Promise<ModelSettingsData> {
-  if (userType === "guest") {
-    throw new ChatbotError("forbidden:billing");
-  }
-
   const [billingState, catalog] = await Promise.all([
     resolveBillingState({ userId, userType }),
     getAllGatewayModels(),
@@ -286,10 +271,6 @@ export async function updateModelSettingsSelection({
   userId: string;
   userType: UserType;
 }) {
-  if (userType === "guest") {
-    throw new ChatbotError("forbidden:billing");
-  }
-
   const billingState = await resolveBillingState({ userId, userType });
   const tier = billingState.entitlements.tier;
 
@@ -439,21 +420,19 @@ export async function recordAiUsage({
       : billingState;
 
   const creditCost =
-    userType === "guest"
-      ? 0
-      : typeof costMicrosUsd === "number"
-        ? convertMicrosToCredits(costMicrosUsd)
-        : usageKind === "chat_generation"
-          ? estimateCreditsFromLanguageUsage({
-              cachedInputTokens,
-              inputTokens: promptTokens,
-              outputTokens: completionTokens,
-              reasoningTokens,
-              totalTokens,
-            })
-          : estimateCreditsFromEmbeddingUsage({
-              tokens: totalTokens ?? promptTokens ?? 0,
-            });
+    typeof costMicrosUsd === "number"
+      ? convertMicrosToCredits(costMicrosUsd)
+      : usageKind === "chat_generation"
+        ? estimateCreditsFromLanguageUsage({
+            cachedInputTokens,
+            inputTokens: promptTokens,
+            outputTokens: completionTokens,
+            reasoningTokens,
+            totalTokens,
+          })
+        : estimateCreditsFromEmbeddingUsage({
+            tokens: totalTokens ?? promptTokens ?? 0,
+          });
 
   const usage = await createAiGenerationUsage({
     cachedInputTokens,
@@ -475,7 +454,7 @@ export async function recordAiUsage({
     userId,
   });
 
-  if (userType !== "guest" && usage && creditCost > 0) {
+  if (usage && creditCost > 0) {
     await createCreditLedgerEntry({
       aiUsageId: usage.id,
       amount: -creditCost,
@@ -495,8 +474,8 @@ export async function recordAiUsage({
   return usage;
 }
 
-export function getAccessTierFromUserType(userType: UserType) {
-  return userType === "guest" ? "guest" : "free";
+export function getAccessTierFromUserType(_userType: UserType) {
+  return "free" as const;
 }
 
 export function getIsPaidSubscriptionActive(

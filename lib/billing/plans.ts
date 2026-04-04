@@ -1,9 +1,7 @@
 import {
   DEFAULT_CHAT_MODEL,
   FREE_MODEL_IDS,
-  GUEST_MODEL_IDS,
-  getActiveModels,
-  getAllGatewayModels,
+  PAID_MODEL_IDS,
   getFreeModels,
 } from "@/lib/ai/models";
 import type {
@@ -18,10 +16,8 @@ const MEGABYTE = 1024 * 1024;
 
 export const PRO_SELECTION_LIMIT = 10;
 
-const guestModelIds = Array.from(new Set(GUEST_MODEL_IDS));
 const freeModelIds = Array.from(new Set(FREE_MODEL_IDS));
-const fallbackCatalogModelIds = getActiveModels().map((model) => model.id);
-const guestModelIdSet = new Set<string>(guestModelIds);
+const paidModelIds = Array.from(new Set(PAID_MODEL_IDS));
 const freeModelIdSet = new Set<string>(freeModelIds);
 
 function uniqueModelIds(modelIds: Iterable<string>) {
@@ -30,13 +26,11 @@ function uniqueModelIds(modelIds: Iterable<string>) {
 
 function getSyncEligibleModelIds(tier: AccessTier) {
   switch (tier) {
-    case "guest":
-      return guestModelIds;
     case "free":
       return freeModelIds;
     case "pro":
     case "max":
-      return uniqueModelIds([...freeModelIds, ...fallbackCatalogModelIds]);
+      return paidModelIds;
     default:
       return freeModelIds;
   }
@@ -44,34 +38,15 @@ function getSyncEligibleModelIds(tier: AccessTier) {
 
 function getDefaultAllowedModelIdsForTier({
   eligibleModelIds,
-  tier,
 }: {
   eligibleModelIds: string[];
   tier: AccessTier;
 }) {
-  switch (tier) {
-    case "guest":
-      return eligibleModelIds.filter((modelId) => guestModelIdSet.has(modelId));
-    case "free":
-      return eligibleModelIds.filter((modelId) => freeModelIdSet.has(modelId));
-    case "pro":
-      return eligibleModelIds.slice(0, PRO_SELECTION_LIMIT);
-    case "max":
-      return eligibleModelIds;
-    default:
-      return eligibleModelIds;
-  }
+  return eligibleModelIds;
 }
 
-export function getSelectionLimitForTier(tier: AccessTier) {
-  switch (tier) {
-    case "pro":
-      return PRO_SELECTION_LIMIT;
-    case "max":
-      return null;
-    default:
-      return null;
-  }
+export function getSelectionLimitForTier(_tier: AccessTier) {
+  return null;
 }
 
 type TierDefinition = Omit<
@@ -80,22 +55,6 @@ type TierDefinition = Omit<
 >;
 
 const tierDefinitions: Record<AccessTier, TierDefinition> = {
-  guest: {
-    attachmentLimits: {
-      maxDocumentSizeBytes: 10 * MEGABYTE,
-      maxFilesPerChat: 2,
-      maxImageSizeBytes: 3 * MEGABYTE,
-    },
-    catalogSource: "gateway",
-    features: {
-      integrations: 0,
-      projects: false,
-      videoGeneration: false,
-    },
-    includedCredits: null,
-    maxMessagesPerHour: 10,
-    selectionLimit: null,
-  },
   free: {
     attachmentLimits: {
       maxDocumentSizeBytes: 15 * MEGABYTE,
@@ -246,39 +205,21 @@ export async function resolveEntitlementsForTier({
   selectedModelIds?: string[] | null;
   tier: AccessTier;
 }): Promise<EffectiveEntitlements> {
-  const freeModels = await getFreeModels();
-  const freeModelIds = freeModels.map((model) => model.id);
-
-  const catalogModelIds =
-    tier === "pro" || tier === "max"
-      ? (await getAllGatewayModels()).map((model) => model.id)
-      : freeModelIds;
-
   const eligibleModelIds =
-    tier === "guest"
-      ? freeModelIds.filter((modelId) => guestModelIdSet.has(modelId))
-      : tier === "free"
-        ? freeModelIds
-        : catalogModelIds;
+    tier === "free"
+      ? (await getFreeModels()).map((model) => model.id)
+      : paidModelIds;
 
-  const selectionLimit = getSelectionLimitForTier(tier);
   const sanitizedSelectedModelIds =
     tier === "pro" || tier === "max"
       ? uniqueModelIds(selectedModelIds ?? []).filter((modelId) =>
           eligibleModelIds.includes(modelId)
         )
       : [];
-  const limitedSelectedModelIds =
-    typeof selectionLimit === "number"
-      ? sanitizedSelectedModelIds.slice(0, selectionLimit)
-      : sanitizedSelectedModelIds;
   const allowedModelIds =
-    limitedSelectedModelIds.length > 0
-      ? limitedSelectedModelIds
-      : getDefaultAllowedModelIdsForTier({
-          eligibleModelIds,
-          tier,
-        });
+    sanitizedSelectedModelIds.length > 0
+      ? sanitizedSelectedModelIds
+      : getDefaultAllowedModelIdsForTier({ eligibleModelIds, tier });
 
   return buildEntitlements({
     allowedModelIds,

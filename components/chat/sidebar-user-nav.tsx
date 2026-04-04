@@ -1,8 +1,6 @@
 "use client";
 
 import { ChevronUp } from "lucide-react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import type { User } from "next-auth";
 import { signOut, useSession } from "next-auth/react";
 import { useTheme } from "next-themes";
@@ -19,7 +17,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { guestRegex } from "@/lib/constants";
 import { LoaderIcon } from "./icons";
 import { toast } from "./toast";
 
@@ -32,11 +29,8 @@ function emailToHue(email: string): number {
 }
 
 export function SidebarUserNav({ user }: { user: User }) {
-  const router = useRouter();
-  const { data, status } = useSession();
+  const { status } = useSession();
   const { setTheme, resolvedTheme } = useTheme();
-
-  const isGuest = guestRegex.test(data?.user?.email ?? "");
 
   return (
     <SidebarMenu>
@@ -76,13 +70,13 @@ export function SidebarUserNav({ user }: { user: User }) {
                 </Avatar>
                 <div className="flex min-w-0 flex-1 flex-col leading-tight">
                   <span className="truncate text-[13px] font-medium">
-                    {isGuest ? "Guest" : (user?.name ?? "User")}
+                    {user?.name ?? "User"}
                   </span>
                   <span
                     className="truncate text-xs text-sidebar-foreground"
                     data-testid="user-email"
                   >
-                    {isGuest ? (user?.email ?? "Guest session") : user?.email}
+                    {user?.email}
                   </span>
                 </div>
                 <ChevronUp className="ml-auto size-3.5 text-sidebar-foreground/50" />
@@ -103,15 +97,6 @@ export function SidebarUserNav({ user }: { user: User }) {
             >
               {`Toggle ${resolvedTheme === "light" ? "dark" : "light"} mode`}
             </DropdownMenuItem>
-            {isGuest ? null : (
-              <DropdownMenuItem
-                asChild
-                className="cursor-pointer text-[13px]"
-                data-testid="user-nav-item-model-settings"
-              >
-                <Link href="/settings/models">Model settings</Link>
-              </DropdownMenuItem>
-            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild data-testid="user-nav-item-auth">
               <button
@@ -127,17 +112,11 @@ export function SidebarUserNav({ user }: { user: User }) {
                     return;
                   }
 
-                  if (isGuest) {
-                    router.push("/login");
-                  } else {
-                    signOut({
-                      redirectTo: "/",
-                    });
-                  }
+                  signOut({ redirectTo: "/" });
                 }}
                 type="button"
               >
-                {isGuest ? "Login to your account" : "Sign out"}
+                Sign out
               </button>
             </DropdownMenuItem>
           </DropdownMenuContent>

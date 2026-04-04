@@ -6,6 +6,7 @@ import equal from "fast-deep-equal";
 import { ArrowUpIcon, BrainIcon, EyeIcon, WrenchIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
+import { useSession } from "next-auth/react";
 import {
   type ChangeEvent,
   type Dispatch,
@@ -61,7 +62,7 @@ import { SuggestedActions } from "./suggested-actions";
 import type { VisibilityType } from "./visibility-selector";
 
 const safeInitialModels = chatModels.filter((model) =>
-  [DEFAULT_CHAT_MODEL, "openai/gpt-5-nano", "mistral/mistral-small"].includes(
+  [DEFAULT_CHAT_MODEL, "openai/gpt-4o", "openai/gpt-5-mini", "openai/gpt-5"].includes(
     model.id
   )
 );
@@ -112,6 +113,7 @@ function PureMultimodalInput({
   isLoading?: boolean;
 }) {
   const router = useRouter();
+  const { data: session } = useSession();
   const { setTheme, resolvedTheme } = useTheme();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { width } = useWindowSize();
@@ -558,6 +560,11 @@ function PureMultimodalInput({
         inputGroupClassName="border-border/70 bg-card transition-shadow duration-200 focus-within:border-border/70 focus-within:shadow-sm has-[[data-slot=input-group-control]:focus-visible]:border-border/70 has-[[data-slot=input-group-control]:focus-visible]:ring-0"
         inputGroupStyle={{ borderRadius: "24px" }}
         onSubmit={() => {
+          if (!session?.user) {
+            const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+            router.push(`${base}/login`);
+            return;
+          }
           if (input.startsWith("/")) {
             const query = input.slice(1).trim();
             const cmd = slashCommands.find((c) => c.name === query);
