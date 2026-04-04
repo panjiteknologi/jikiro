@@ -392,6 +392,16 @@ export async function getGatewayModelById(modelId: string) {
   return models.find((model) => model.id === modelId) ?? null;
 }
 
+export async function getFreeModels(): Promise<GatewayModelWithCapabilities[]> {
+  const allModels = await getAllGatewayModels();
+  const freeIdSet = new Set(FREE_MODEL_IDS as readonly string[]);
+  const available = allModels.filter((m) => freeIdSet.has(m.id));
+
+  return (FREE_MODEL_IDS as readonly string[])
+    .map((id) => available.find((m) => m.id === id))
+    .filter((m): m is GatewayModelWithCapabilities => m !== undefined);
+}
+
 export function getActiveModels(): ChatModel[] {
   return getFallbackCatalog();
 }

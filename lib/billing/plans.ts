@@ -4,6 +4,7 @@ import {
   GUEST_MODEL_IDS,
   getActiveModels,
   getAllGatewayModels,
+  getFreeModels,
 } from "@/lib/ai/models";
 import type {
   AccessTier,
@@ -245,14 +246,19 @@ export async function resolveEntitlementsForTier({
   selectedModelIds?: string[] | null;
   tier: AccessTier;
 }): Promise<EffectiveEntitlements> {
-  const catalog = await getAllGatewayModels();
-  const catalogModelIds = catalog.map((model) => model.id);
+  const freeModels = await getFreeModels();
+  const freeModelIds = freeModels.map((model) => model.id);
+
+  const catalogModelIds =
+    tier === "pro" || tier === "max"
+      ? (await getAllGatewayModels()).map((model) => model.id)
+      : freeModelIds;
 
   const eligibleModelIds =
     tier === "guest"
-      ? catalogModelIds.filter((modelId) => guestModelIdSet.has(modelId))
+      ? freeModelIds.filter((modelId) => guestModelIdSet.has(modelId))
       : tier === "free"
-        ? catalogModelIds.filter((modelId) => freeModelIdSet.has(modelId))
+        ? freeModelIds
         : catalogModelIds;
 
   const selectionLimit = getSelectionLimitForTier(tier);
