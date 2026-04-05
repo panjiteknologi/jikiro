@@ -37,11 +37,16 @@ export async function GET(request: NextRequest) {
     return new ChatbotError("unauthorized:chat").toResponse();
   }
 
+  const projectIdParam = searchParams.get("project_id");
+  const projectId =
+    projectIdParam === null ? undefined : projectIdParam || undefined;
+
   const chats = await getChatsByUserId({
     id: session.user.id,
     limit,
     startingAfter,
     endingBefore,
+    projectId,
   });
 
   return Response.json(chats);

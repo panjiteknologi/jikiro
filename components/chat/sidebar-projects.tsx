@@ -7,6 +7,8 @@ import {
   MoreHorizontal,
 } from "lucide-react"
 import type { User } from "next-auth"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { useState } from "react"
 import { toast } from "sonner"
 import useSWR from "swr"
@@ -57,6 +59,7 @@ function ProjectSkeletons({ count = 3 }: { count?: number }) {
 
 export function SidebarProjects({ user }: { user: User | undefined }) {
   const { isMobile, setOpenMobile } = useSidebar()
+  const pathname = usePathname()
   const [isOpen, setIsOpen] = useState(true)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [projectName, setProjectName] = useState("")
@@ -144,22 +147,29 @@ export function SidebarProjects({ user }: { user: User | undefined }) {
                 </SidebarMenuItem>
 
                 {/* Visible projects */}
-                {visibleProjects.map((project) => (
-                  <SidebarMenuItem key={project.id}>
-                    <SidebarMenuButton
-                     className="h-7 rounded-lg text-sidebar-foreground/40 transition-colors duration-150 hover:bg-primary/10 hover:text-primary"
-                      tooltip={project.name}
-                      onClick={() => {
-                        setOpenMobile(false)
-                      }}
-                    >
-                      <Folder className="size-4" />
-                      <span className="truncate text-[13px] font-normal">
-                        {project.name}
-                      </span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
+                {visibleProjects.map((project) => {
+                  const isActive = pathname === `/projects/${project.id}`
+                  return (
+                    <SidebarMenuItem key={project.id}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={isActive}
+                        className="h-7 rounded-lg text-sidebar-foreground/40 transition-colors duration-150 hover:bg-primary/10 hover:text-primary data-[active=true]:bg-primary/10 data-[active=true]:text-primary"
+                        tooltip={project.name}
+                      >
+                        <Link
+                          href={`/projects/${project.id}`}
+                          onClick={() => setOpenMobile(false)}
+                        >
+                          <Folder className="size-4" />
+                          <span className="truncate text-[13px] font-normal">
+                            {project.name}
+                          </span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )
+                })}
 
                 {/* More button */}
                 {hasMore && (
@@ -185,19 +195,20 @@ export function SidebarProjects({ user }: { user: User | undefined }) {
                           {isLoading ? (
                             <ProjectSkeletons count={3} />
                           ) : (
-                            moreProjects.map((project) => (
-                              <button
-                                key={project.id}
-                                type="button"
-                                className="flex h-7 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] text-foreground/70 hover:bg-muted hover:text-foreground transition-colors"
-                                onClick={() => {
-                                  setOpenMobile(false)
-                                }}
-                              >
-                                <Folder className="size-4 shrink-0" />
-                                <span className="truncate">{project.name}</span>
-                              </button>
-                            ))
+                            moreProjects.map((project) => {
+                              const isActive = pathname === `/projects/${project.id}`
+                              return (
+                                <Link
+                                  key={project.id}
+                                  href={`/projects/${project.id}`}
+                                  onClick={() => setOpenMobile(false)}
+                                  className={`flex h-7 w-full items-center gap-2 rounded-lg px-2 text-[13px] transition-colors ${isActive ? "bg-primary/10 text-primary" : "text-foreground/70 hover:bg-muted hover:text-foreground"}`}
+                                >
+                                  <Folder className="size-4 shrink-0" />
+                                  <span className="truncate">{project.name}</span>
+                                </Link>
+                              )
+                            })
                           )}
                         </div>
                       </PopoverContent>

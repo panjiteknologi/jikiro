@@ -1,0 +1,183 @@
+"use client"
+
+import { formatDistanceToNow } from "date-fns"
+import {
+  FolderIcon,
+  FolderOpenIcon,
+  MessageSquareIcon,
+  PlusIcon,
+  UploadCloudIcon,
+} from "lucide-react"
+import Link from "next/link"
+import { useParams, useRouter } from "next/navigation"
+import useSWR from "swr"
+
+import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs"
+import type { ChatHistory } from "@/components/chat/sidebar-history"
+import type { Chat, Project } from "@/lib/db/schema"
+import { fetcher } from "@/lib/utils"
+
+const API_BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? ""
+
+export default function ProjectDetailPage() {
+  const { projectId } = useParams<{ projectId: string }>()
+  const router = useRouter()
+
+  const { data: project, isLoading: projectLoading } = useSWR<Project>(
+    projectId
+      ? `${API_BASE}/api/projects/${projectId}`
+      : null,
+    fetcher,
+    { revalidateOnFocus: false }
+  )
+
+  const { data: chatHistory, isLoading: chatsLoading } = useSWR<ChatHistory>(
+    projectId
+      ? `${API_BASE}/api/history?project_id=${projectId}&limit=50`
+      : null,
+    fetcher,
+    { revalidateOnFocus: false }
+  )
+
+  if (projectLoading) {
+    return <ProjectDetailSkeleton />
+  }
+
+  if (!project) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
+        <FolderIcon className="size-12 text-muted-foreground/30" />
+        <div>
+          <p className="font-medium">Project not found</p>
+          <p className="text-sm text-muted-foreground">
+            This project may have been deleted or doesn&apos;t exist.
+          </p>
+        </div>
+        <Button variant="outline" asChild>
+          <Link href="/projects">Back to Projects</Link>
+        </Button>
+      </div>
+    )
+  }
+
+  const chats: Chat[] = chatHistory?.chats ?? []
+
+  return (
+    <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
+      {/* Header */}
+      <div className="mb-8 flex items-center gap-3">
+        <FolderOpenIcon className="size-7 shrink-0 text-primary" />
+        <h1 className="text-2xl font-semibold tracking-tight">{project.name}</h1>
+      </div>
+
+      {/* New chat bar */}
+      <button
+        type="button"
+        onClick={() => router.push("/")}
+        className="mb-8 flex w-full items-center gap-3 rounded-full border border-border bg-input/30 px-4 py-3 text-left text-muted-foreground shadow-sm transition-colors hover:bg-input/50 hover:text-foreground"
+      >
+        <PlusIcon className="size-4 shrink-0" />
+        <span className="text-sm">New chat in {project.name}</span>
+      </button>
+
+      {/* Tabs */}
+      <Tabs defaultValue="chats">
+        <TabsList variant="line" className="mb-4 w-full justify-start border-b border-border rounded-none pb-0">
+          <TabsTrigger value="chats" className="gap-1.5">
+            Chats
+          </TabsTrigger>
+          <TabsTrigger value="sources" className="gap-1.5">
+            Sources
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Chats tab */}
+        <TabsContent value="chats">
+          {chatsLoading ? (
+            <ChatListSkeleton />
+          ) : chats.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+              <MessageSquareIcon className="size-10 text-muted-foreground/30" />
+              <p className="text-sm text-muted-foreground">
+                No chats in this project yet.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-border">
+              {chats.map((chat) => (
+                <Link
+                  key={chat.id}
+                  href={`/chat/${chat.id}`}
+                  className="flex items-center justify-between gap-4 py-3.5 hover:bg-muted/40 px-2 rounded-lg transition-colors"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{chat.title}</p>
+                  </div>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {formatDistanceToNow(new Date(chat.createdAt), {
+                      addSuffix: true,
+                    })}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Sources tab — placeholder */}
+        <TabsContent value="sources">
+          <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border py-16 text-center">
+            <div className="flex gap-3">
+              <div className="flex size-10 items-center justify-center rounded-full bg-muted">
+                <UploadCloudIcon className="size-5 text-muted-foreground" />
+              </div>
+            </div>
+            <div className="max-w-xs">
+              <p className="font-medium">Give this project more context</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Upload files or connect apps to give the AI deeper context about this project.
+              </p>
+            </div>
+            <Button variant="outline" disabled>
+              Add source
+            </Button>
+          </div>
+        </TabsContent>
+      </Tabs>
+    </div>
+  )
+}
+
+function ChatListSkeleton() {
+  return (
+    <div className="divide-y divide-border">
+      {[1, 2, 3, 4].map((i) => (
+        <div key={i} className="flex items-center justify-between gap-4 py-3.5 px-2">
+          <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-3 w-16" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ProjectDetailSkeleton() {
+  return (
+    <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
+      <div className="mb-8 flex items-center gap-3">
+        <Skeleton className="size-7 rounded-md" />
+        <Skeleton className="h-8 w-48" />
+      </div>
+      <Skeleton className="mb-8 h-12 w-full rounded-full" />
+      <Skeleton className="mb-4 h-9 w-40 rounded-lg" />
+      <ChatListSkeleton />
+    </div>
+  )
+}

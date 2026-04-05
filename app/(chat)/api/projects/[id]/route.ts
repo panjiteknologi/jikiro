@@ -3,6 +3,26 @@ import { auth } from "@/app/(auth)/auth";
 import { deleteProject, getProjectById, updateProject } from "@/lib/db/queries";
 import { ChatbotError } from "@/lib/errors";
 
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await auth();
+
+  if (!session?.user?.id) {
+    return new ChatbotError("unauthorized:project").toResponse();
+  }
+
+  const { id } = await params;
+  const project = await getProjectById({ id, userId: session.user.id });
+
+  if (!project) {
+    return new ChatbotError("not_found:project").toResponse();
+  }
+
+  return Response.json(project);
+}
+
 const updateProjectSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   systemPrompt: z.string().max(4000).nullable().optional(),
