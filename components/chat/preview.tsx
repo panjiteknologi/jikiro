@@ -1,12 +1,13 @@
 "use client";
 
-import { CheckCircle2, Crown, Sparkles, Zap } from "lucide-react";
-import Link from "next/link";
-import type { ElementType } from "react";
 import { suggestions } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import Jikiro from "@/public/svg/jikiro";
+import { CheckCircle2, Crown, Sparkles, Zap } from "lucide-react";
+import Link from "next/link";
+import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import type { ElementType } from "react";
 
 type PreviewPlan = {
   slug: string;
@@ -15,7 +16,6 @@ type PreviewPlan = {
   icon: ElementType;
   features: string[];
   cta: string;
-  href: string;
   popular?: boolean;
 };
 
@@ -25,18 +25,16 @@ const PREVIEW_PLANS: PreviewPlan[] = [
     name: "Free",
     price: 0,
     icon: Sparkles,
-    features: ["100 AI credits/cycle", "5 AI models", "5 attachments"],
+    features: ["100 AI credits/cycle", "Basic AI models", "File Attachments", "Basic Support"],
     cta: "Get started",
-    href: "/register",
   },
   {
     slug: "pro",
     name: "Pro",
     price: 149_000,
     icon: Zap,
-    features: ["1,500 AI credits/cycle", "Up to 10 models", "10 attachments"],
+    features: ["1,500 AI credits/cycle", "Higher AI models", "Unlimited Projects", "Image Generation"],
     cta: "Get Pro",
-    href: "/billing",
     popular: true,
   },
   {
@@ -44,9 +42,8 @@ const PREVIEW_PLANS: PreviewPlan[] = [
     name: "Max",
     price: 399_000,
     icon: Crown,
-    features: ["5,000 AI credits/cycle", "All AI models", "20 attachments"],
+    features: ["5,000 AI credits/cycle", "Highest AI models", "Unlimited Projects", "Image & Video Generation"],
     cta: "Get Max",
-    href: "/billing",
   },
 ];
 
@@ -57,10 +54,17 @@ function formatPrice(price: number) {
 
 export function Preview() {
   const router = useRouter();
+  const { data: session } = useSession();
+  const isLoggedIn = Boolean(session?.user);
 
   const handleAction = (query?: string) => {
     const url = query ? `/?query=${encodeURIComponent(query)}` : "/";
     router.push(url);
+  };
+
+  const getPlanHref = (plan: PreviewPlan) => {
+    if (plan.slug === "free") return "/register";
+    return isLoggedIn ? "/billing" : "/register?redirect=/billing";
   };
 
   return (
@@ -151,7 +155,7 @@ export function Preview() {
                         ? "bg-primary text-primary-foreground hover:bg-primary/90"
                         : "bg-muted text-foreground hover:bg-muted/70"
                     )}
-                    href={plan.href}
+                    href={getPlanHref(plan)}
                   >
                     {plan.cta}
                   </Link>
