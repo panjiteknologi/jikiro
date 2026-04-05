@@ -46,7 +46,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { SidebarProjects } from './sidebar-projects';
 
-export function AppSidebar({ user }: { user: User | undefined }) {
+export function AppSidebar({ user, planName }: { user: User | undefined; planName?: string }) {
   const router = useRouter();
   const { setOpenMobile, toggleSidebar } = useSidebar();
   const { mutate } = useSWRConfig();
@@ -154,7 +154,7 @@ export function AppSidebar({ user }: { user: User | undefined }) {
               </SidebarMenuItem>
             )}
           </SidebarMenu>
-          {user && <SidebarUserNav user={user} />}
+          {user && <SidebarUserNav user={user} planName={planName} />}
         </SidebarFooter>
         <SidebarRail />
       </Sidebar>

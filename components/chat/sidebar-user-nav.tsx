@@ -28,7 +28,7 @@ function emailToHue(email: string): number {
   return Math.abs(hash) % 360;
 }
 
-export function SidebarUserNav({ user }: { user: User }) {
+export function SidebarUserNav({ user, planName }: { user: User; planName?: string }) {
   const { status } = useSession();
   const { setTheme, resolvedTheme } = useTheme();
 
@@ -73,10 +73,10 @@ export function SidebarUserNav({ user }: { user: User }) {
                     {user?.name ?? "User"}
                   </span>
                   <span
-                    className="truncate text-xs text-sidebar-foreground"
-                    data-testid="user-email"
+                    className="truncate text-xs text-sidebar-foreground/50"
+                    data-testid="user-plan"
                   >
-                    {user?.email}
+                    {planName ?? "Free Plan"}
                   </span>
                 </div>
                 <ChevronUp className="ml-auto size-3.5 text-sidebar-foreground/50" />
