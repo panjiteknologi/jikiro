@@ -39,6 +39,7 @@ import {
 } from "@/lib/ai/models";
 import {
   getAttachmentAcceptAttribute,
+  getAttachmentSizeLimit,
   isReadableDocumentMimeType,
 } from "@/lib/attachments";
 import type { Attachment, ChatMessage } from "@/lib/types";
@@ -417,10 +418,28 @@ function PureMultimodalInput({
     async (event: ChangeEvent<HTMLInputElement>) => {
       const files = Array.from(event.target.files || []);
 
-      setUploadQueue(files.map((file) => file.name));
+      const validFiles: File[] = [];
+      for (const file of files) {
+        const maxSize = getAttachmentSizeLimit(file.type);
+        if (file.size > maxSize) {
+          const maxSizeMb = Math.round(maxSize / (1024 * 1024));
+          toast.error(
+            `"${file.name}" exceeds the ${maxSizeMb}MB ${isReadableDocumentMimeType(file.type) ? "document" : "image"} size limit.`
+          );
+        } else {
+          validFiles.push(file);
+        }
+      }
+
+      if (validFiles.length === 0) {
+        event.target.value = "";
+        return;
+      }
+
+      setUploadQueue(validFiles.map((file) => file.name));
 
       try {
-        const uploadPromises = files.map((file) => uploadFile(file));
+        const uploadPromises = validFiles.map((file) => uploadFile(file));
         const uploadedAttachments = await Promise.all(uploadPromises);
         const successfullyUploadedAttachments = uploadedAttachments.filter(
           (attachment) => attachment !== undefined
