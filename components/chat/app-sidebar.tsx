@@ -134,7 +134,7 @@ export function AppSidebar({ user, planName }: { user: User | undefined; planNam
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
-          <SidebarProjects />
+          <SidebarProjects user={user} />
           <SidebarHistory user={user} />
         </SidebarContent>
         <SidebarFooter className="border-sidebar-border pt-2 pb-3">
