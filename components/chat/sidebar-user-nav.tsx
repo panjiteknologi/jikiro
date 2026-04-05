@@ -112,7 +112,7 @@ export function SidebarUserNav({ user, planName }: { user: User; planName?: stri
                     return;
                   }
 
-                  signOut({ redirectTo: "/" });
+                  signOut({ callbackUrl: "/login" });
                 }}
                 type="button"
               >
