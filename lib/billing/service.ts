@@ -34,9 +34,17 @@ import {
   resetAndGrantCreditsForCycle,
   saveSubscription,
 } from "@/lib/db/billing-queries";
-import { getUserById, updateUserSelectedModelIds } from "@/lib/db/queries";
+import {
+  getMessageCountsByUserId,
+  getUserById,
+  updateUserSelectedModelIds,
+} from "@/lib/db/queries";
 import type { Subscription } from "@/lib/db/schema";
 import { ChatbotError } from "@/lib/errors";
+import {
+  getCachedUsageCounts,
+  setCachedUsageCounts,
+} from "@/lib/ratelimit";
 
 type ResolvedBillingState = {
   entitlements: EffectiveEntitlements;
@@ -201,6 +209,42 @@ export async function getBillingPageData({
     recentCheckouts,
     remainingCredits: billingState.remainingCredits,
     subscription: billingState.subscription,
+  };
+}
+
+export type UsageData = {
+  counts: { hour: number; fiveHours: number; week: number };
+  credits: { included: number; remaining: number };
+  limits: { hour: number; fiveHours: number; week: number };
+};
+
+export async function getUsageData({
+  userId,
+  userType,
+}: {
+  userId: string;
+  userType: UserType;
+}): Promise<UsageData> {
+  let counts = await getCachedUsageCounts(userId);
+  if (!counts) {
+    counts = await getMessageCountsByUserId({ id: userId });
+    setCachedUsageCounts(userId, counts).catch(() => {});
+  }
+
+  const billingState = await resolveBillingState({ userId, userType });
+  const { entitlements, remainingCredits } = billingState;
+
+  return {
+    counts,
+    credits: {
+      included: entitlements.includedCredits ?? 0,
+      remaining: remainingCredits ?? 0,
+    },
+    limits: {
+      fiveHours: entitlements.maxMessagesPer5Hours,
+      hour: entitlements.maxMessagesPerHour,
+      week: entitlements.maxMessagesPerWeek,
+    },
   };
 }
 

@@ -1184,6 +1184,59 @@ export async function getMessageCountByUserId({
   }
 }
 
+export type MessageWindowCounts = {
+  hour: number;
+  fiveHours: number;
+  week: number;
+};
+
+export async function getMessageCountsByUserId({
+  id,
+}: {
+  id: string;
+}): Promise<MessageWindowCounts> {
+  try {
+    const now = Date.now();
+    const cutoff1h = new Date(now - 3_600_000);
+    const cutoff5h = new Date(now - 18_000_000);
+    const cutoff168h = new Date(now - 604_800_000);
+
+    const [stats] = await db
+      .select({
+        hour: sql<number>`count(*) filter (where ${message.createdAt} >= ${cutoff1h})`.mapWith(
+          Number
+        ),
+        fiveHours: sql<number>`count(*) filter (where ${message.createdAt} >= ${cutoff5h})`.mapWith(
+          Number
+        ),
+        week: sql<number>`count(*)`.mapWith(Number),
+      })
+      .from(message)
+      .innerJoin(chat, eq(message.chatId, chat.id))
+      .where(
+        and(
+          eq(chat.userId, id),
+          eq(message.role, "user"),
+          gte(message.createdAt, cutoff168h)
+        )
+      )
+      .execute();
+
+    return {
+      hour: stats?.hour ?? 0,
+      fiveHours: stats?.fiveHours ?? 0,
+      week: stats?.week ?? 0,
+    };
+  } catch (error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      error instanceof Error
+        ? `Failed to get message window counts by user id: ${error.message}`
+        : "Failed to get message window counts by user id"
+    );
+  }
+}
+
 export async function createStreamId({
   streamId,
   chatId,

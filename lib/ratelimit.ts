@@ -2,6 +2,7 @@ import { createClient } from "redis";
 
 import { isProductionEnvironment } from "@/lib/constants";
 import { ChatbotError } from "@/lib/errors";
+import type { MessageWindowCounts } from "@/lib/db/queries";
 
 const MAX_MESSAGES = 10;
 const TTL_SECONDS = 60 * 60;
@@ -44,5 +45,63 @@ export async function checkIpRateLimit(ip: string | undefined) {
     if (error instanceof ChatbotError) {
       throw error;
     }
+  }
+}
+
+const USAGE_COUNTS_TTL = 60;
+
+function usageCountsKey(userId: string) {
+  return `usage-counts:${userId}`;
+}
+
+export async function getCachedUsageCounts(
+  userId: string
+): Promise<MessageWindowCounts | null> {
+  const redis = getClient();
+  if (!redis?.isReady) {
+    return null;
+  }
+
+  try {
+    const raw = await redis.get(usageCountsKey(userId));
+    if (!raw) {
+      return null;
+    }
+    return JSON.parse(raw) as MessageWindowCounts;
+  } catch {
+    return null;
+  }
+}
+
+export async function setCachedUsageCounts(
+  userId: string,
+  counts: MessageWindowCounts
+): Promise<void> {
+  const redis = getClient();
+  if (!redis?.isReady) {
+    return;
+  }
+
+  try {
+    await redis.set(usageCountsKey(userId), JSON.stringify(counts), {
+      EX: USAGE_COUNTS_TTL,
+    });
+  } catch {
+    // Silently fail — cache is best-effort
+  }
+}
+
+export async function invalidateUsageCountsCache(
+  userId: string
+): Promise<void> {
+  const redis = getClient();
+  if (!redis?.isReady) {
+    return;
+  }
+
+  try {
+    await redis.del(usageCountsKey(userId));
+  } catch {
+    // Silently fail
   }
 }

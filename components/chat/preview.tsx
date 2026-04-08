@@ -1,18 +1,20 @@
 "use client";
 
+import { CheckCircle2, Crown, Sparkles, Zap } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
+import { type ElementType, useState } from "react";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { BillingInterval } from "@/lib/billing/types";
 import { suggestions } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import Jikiro from "@/public/svg/jikiro";
-import { CheckCircle2, Crown, Sparkles, Zap } from "lucide-react";
-import Link from "next/link";
-import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
-import type { ElementType } from "react";
 
 type PreviewPlan = {
   slug: string;
   name: string;
-  price: number;
+  price: Record<BillingInterval, number>;
   icon: ElementType;
   features: string[];
   cta: string;
@@ -23,38 +25,66 @@ const PREVIEW_PLANS: PreviewPlan[] = [
   {
     slug: "free",
     name: "Free",
-    price: 0,
+    price: {
+      monthly: 0,
+      yearly: 0,
+    },
     icon: Sparkles,
-    features: ["100 AI credits/cycle", "Basic AI models", "File Attachments", "Basic Support"],
+    features: [
+      "100 AI credits/cycle",
+      "Basic AI models",
+      "File Attachments",
+      "Basic Support",
+    ],
     cta: "Get started",
   },
   {
     slug: "pro",
     name: "Pro",
-    price: 149_000,
+    price: {
+      monthly: 149_000,
+      yearly: 1_490_000,
+    },
     icon: Zap,
-    features: ["1,500 AI credits/cycle", "Higher AI models", "Unlimited Projects", "Image Generation"],
+    features: [
+      "1,500 AI credits/cycle",
+      "Higher AI models",
+      "Unlimited Projects",
+      "Image Generation",
+    ],
     cta: "Get Pro",
     popular: true,
   },
   {
     slug: "max",
     name: "Max",
-    price: 399_000,
+    price: {
+      monthly: 399_000,
+      yearly: 3_990_000,
+    },
     icon: Crown,
-    features: ["5,000 AI credits/cycle", "Highest AI models", "Unlimited Projects", "Image & Video Generation"],
+    features: [
+      "5,000 AI credits/cycle",
+      "Highest AI models",
+      "Unlimited Projects",
+      "Image & Video Generation",
+    ],
     cta: "Get Max",
   },
 ];
 
 function formatPrice(price: number) {
-  if (price === 0) return "Free";
+  if (price === 0) {
+    return "Free";
+  }
+
   return `Rp ${(price / 1000).toLocaleString("id-ID")}k`;
 }
 
 export function Preview() {
   const router = useRouter();
   const { data: session } = useSession();
+  const [billingPeriod, setBillingPeriod] = useState<BillingInterval>("yearly");
   const isLoggedIn = Boolean(session?.user);
 
   const handleAction = (query?: string) => {
@@ -63,8 +93,15 @@ export function Preview() {
   };
 
   const getPlanHref = (plan: PreviewPlan) => {
-    if (plan.slug === "free") return "/register";
-    return isLoggedIn ? "/billing" : "/register?redirect=/billing";
+    if (plan.slug === "free") {
+      return "/register";
+    }
+
+    const billingHref = `/billing?interval=${billingPeriod}`;
+
+    return isLoggedIn
+      ? billingHref
+      : `/register?redirect=${encodeURIComponent(billingHref)}`;
   };
 
   return (
@@ -107,9 +144,33 @@ export function Preview() {
           <p className="mb-3 text-center text-xs text-muted-foreground">
             Plans &amp; Pricing
           </p>
+          <Tabs
+            className="mb-4 flex justify-center"
+            onValueChange={(value) =>
+              setBillingPeriod(value === "monthly" ? "monthly" : "yearly")
+            }
+            value={billingPeriod}
+          >
+            <TabsList className="h-auto rounded-md border border-border/60 bg-background p-1">
+              <TabsTrigger
+                className="px-2 py-1 data-[state=active]:bg-muted data-[state=active]:shadow-sm"
+                value="monthly"
+              >
+                <span className="text-[11px] text-foreground">Monthly</span>
+              </TabsTrigger>
+              <TabsTrigger
+                className="px-2 py-1 data-[state=active]:bg-muted data-[state=active]:shadow-sm"
+                value="yearly"
+              >
+                <span className="text-[11px] text-foreground">Yearly</span>
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
           <div className="grid grid-cols-3 gap-3">
             {PREVIEW_PLANS.map((plan) => {
               const Icon = plan.icon;
+              const activePrice = plan.price[billingPeriod];
+
               return (
                 <div
                   className={cn(
@@ -127,11 +188,11 @@ export function Preview() {
 
                   <div>
                     <span className="text-xl font-bold leading-none">
-                      {formatPrice(plan.price)}
+                      {formatPrice(activePrice)}
                     </span>
-                    {plan.price > 0 && (
+                    {activePrice > 0 && (
                       <span className="ml-1 text-[11px] text-muted-foreground">
-                        /mo
+                        /{billingPeriod === "monthly" ? "mo" : "yr"}
                       </span>
                     )}
                   </div>

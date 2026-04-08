@@ -37,6 +37,7 @@ type DisplayPlan = {
 type BillingDashboardProps = {
   channels: TripayChannel[];
   currentPlan: PlanSnapshot | null;
+  defaultBillingPeriod: PricingBillingPeriod;
   displayPlans: DisplayPlan[];
   isGuest: boolean;
   recentCheckouts: BillingCheckout[];
@@ -211,6 +212,7 @@ function getCtaDisabled({
 export function BillingDashboard({
   channels,
   currentPlan,
+  defaultBillingPeriod,
   displayPlans,
   isGuest,
   remainingCredits,
@@ -316,6 +318,7 @@ export function BillingDashboard({
   return (
     <Pricing
       backHref="/"
+      defaultBillingPeriod={defaultBillingPeriod}
       headerAction={
         showManageModels ? (
           <Link

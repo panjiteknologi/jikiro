@@ -5,16 +5,33 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { getDisplayPlans } from "@/lib/billing/plans";
 import { getBillingPageData } from "@/lib/billing/service";
 import { getTripayConfig, listTripayChannels } from "@/lib/billing/tripay";
+import type { BillingInterval } from "@/lib/billing/types";
 
-export default function BillingPage() {
+type BillingPageProps = {
+  searchParams?: Promise<{
+    interval?: string | string[];
+  }>;
+};
+
+function resolveBillingInterval(value?: string | string[]): BillingInterval {
+  const interval = Array.isArray(value) ? value[0] : value;
+
+  return interval === "monthly" ? "monthly" : "yearly";
+}
+
+export default function BillingPage({ searchParams }: BillingPageProps) {
   return (
     <Suspense fallback={<BillingPageFallback />}>
-      <BillingPageContent />
+      <BillingPageContent searchParams={searchParams} />
     </Suspense>
   );
 }
 
-async function BillingPageContent() {
+async function BillingPageContent({ searchParams }: BillingPageProps) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const defaultBillingPeriod = resolveBillingInterval(
+    resolvedSearchParams?.interval
+  );
   const session = await auth();
   const tripayConfigured = Boolean(getTripayConfig());
   const channels = tripayConfigured ? await listTripayChannels() : [];
@@ -24,6 +41,7 @@ async function BillingPageContent() {
       <BillingDashboard
         channels={channels}
         currentPlan={null}
+        defaultBillingPeriod={defaultBillingPeriod}
         displayPlans={getDisplayPlans()}
         isGuest={true}
         recentCheckouts={[]}
@@ -44,6 +62,7 @@ async function BillingPageContent() {
     <BillingDashboard
       channels={channels}
       currentPlan={billingData.currentPlan}
+      defaultBillingPeriod={defaultBillingPeriod}
       displayPlans={billingData.displayPlans}
       isGuest={false}
       recentCheckouts={billingData.recentCheckouts}

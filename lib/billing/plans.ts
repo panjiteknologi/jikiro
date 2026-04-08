@@ -68,7 +68,9 @@ const tierDefinitions: Record<AccessTier, TierDefinition> = {
       videoGeneration: false,
     },
     includedCredits: 100,
+    maxMessagesPer5Hours: 50,
     maxMessagesPerHour: 30,
+    maxMessagesPerWeek: 200,
     selectionLimit: null,
   },
   pro: {
@@ -84,7 +86,9 @@ const tierDefinitions: Record<AccessTier, TierDefinition> = {
       videoGeneration: false,
     },
     includedCredits: 1500,
+    maxMessagesPer5Hours: 300,
     maxMessagesPerHour: 120,
+    maxMessagesPerWeek: 2000,
     selectionLimit: PRO_SELECTION_LIMIT,
   },
   max: {
@@ -100,7 +104,9 @@ const tierDefinitions: Record<AccessTier, TierDefinition> = {
       videoGeneration: true,
     },
     includedCredits: 5000,
+    maxMessagesPer5Hours: 800,
     maxMessagesPerHour: 300,
+    maxMessagesPerWeek: 5000,
     selectionLimit: null,
   },
 };

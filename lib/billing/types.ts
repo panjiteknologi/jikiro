@@ -59,7 +59,9 @@ export type EffectiveEntitlements = {
   defaultModelId: string;
   features: PlanFeatureFlags;
   includedCredits: number | null;
+  maxMessagesPer5Hours: number;
   maxMessagesPerHour: number;
+  maxMessagesPerWeek: number;
   selectionLimit: number | null;
   tier: AccessTier;
 };

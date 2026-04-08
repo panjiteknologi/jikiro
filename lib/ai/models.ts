@@ -8,7 +8,6 @@ export const PAID_MODEL_IDS = [
   "openai/gpt-5",
   "anthropic/claude-haiku-4.5",
   "anthropic/claude-sonnet-4.6",
-  "anthropic/claude-opus-4.6",
 ] as const;
 
 export const VISION_MODEL_BY_TIER = {
@@ -103,12 +102,6 @@ const curatedModelOverrides: ChatModel[] = [
     description: "Balanced Anthropic model for strong coding and reasoning",
   },
   {
-    id: "anthropic/claude-opus-4.6",
-    name: "Claude Opus 4.6",
-    provider: "anthropic",
-    description: "Flagship Anthropic model for deep reasoning and complex work",
-  },
-  {
     id: "google/gemini-2.5-flash-image",
     name: "Gemini 2.5 Flash Image",
     provider: "google",
@@ -138,7 +131,6 @@ const fallbackGatewayModels: FallbackGatewayModel[] = curatedModelOverrides.map(
             "openai/gpt-4o",
             "anthropic/claude-haiku-4.5",
             "anthropic/claude-sonnet-4.6",
-            "anthropic/claude-opus-4.6",
             "google/gemini-2.5-flash",
             "google/gemini-2.5-pro",
           ].includes(model.id),
@@ -147,7 +139,6 @@ const fallbackGatewayModels: FallbackGatewayModel[] = curatedModelOverrides.map(
             "openai/gpt-5",
             "anthropic/claude-haiku-4.5",
             "anthropic/claude-sonnet-4.6",
-            "anthropic/claude-opus-4.6",
           ].includes(model.id),
         },
   })

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useActionState, useEffect, useState } from "react";
 
@@ -12,8 +12,13 @@ import { type LoginActionState, login } from "../actions";
 
 export default function Page() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [isSuccessful, setIsSuccessful] = useState(false);
+  const redirect = searchParams.get("redirect");
+  const registerHref = redirect
+    ? `/register?redirect=${encodeURIComponent(redirect)}`
+    : "/register";
 
   const [state, formAction] = useActionState<LoginActionState, FormData>(
     login,
@@ -22,7 +27,6 @@ export default function Page() {
 
   const { update: updateSession } = useSession();
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: router and updateSession are stable refs
   useEffect(() => {
     if (state.status === "failed") {
       toast({ type: "error", description: "Invalid credentials!" });
@@ -34,12 +38,9 @@ export default function Page() {
     } else if (state.status === "success") {
       setIsSuccessful(true);
       updateSession();
-      const redirect = new URLSearchParams(window.location.search).get(
-        "redirect"
-      );
       router.push(redirect ?? "/");
     }
-  }, [state.status]);
+  }, [redirect, router, state.status, updateSession]);
 
   const handleSubmit = (formData: FormData) => {
     setEmail(formData.get("email") as string);
@@ -62,7 +63,7 @@ export default function Page() {
           {"No account? "}
           <Link
             className="text-foreground underline-offset-4 hover:underline"
-            href="/register"
+            href={registerHref}
           >
             Sign up
           </Link>

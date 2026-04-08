@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useActionState, useEffect, useState } from "react";
 import { AuthForm } from "@/components/chat/auth-form";
@@ -11,8 +11,13 @@ import { type RegisterActionState, register } from "../actions";
 
 export default function Page() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [isSuccessful, setIsSuccessful] = useState(false);
+  const redirect = searchParams.get("redirect");
+  const loginHref = redirect
+    ? `/login?redirect=${encodeURIComponent(redirect)}`
+    : "/login";
 
   const [state, formAction] = useActionState<RegisterActionState, FormData>(
     register,
@@ -21,7 +26,6 @@ export default function Page() {
 
   const { update: updateSession } = useSession();
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: router and updateSession are stable refs
   useEffect(() => {
     if (state.status === "user_exists") {
       toast({ type: "error", description: "Account already exists!" });
@@ -36,12 +40,9 @@ export default function Page() {
       toast({ type: "success", description: "Account created!" });
       setIsSuccessful(true);
       updateSession();
-      const redirect = new URLSearchParams(window.location.search).get(
-        "redirect"
-      );
       router.push(redirect ?? "/");
     }
-  }, [state.status]);
+  }, [redirect, router, state.status, updateSession]);
 
   const handleSubmit = (formData: FormData) => {
     setEmail(formData.get("email") as string);
@@ -62,7 +63,7 @@ export default function Page() {
           {"Have an account? "}
           <Link
             className="text-foreground underline-offset-4 hover:underline"
-            href="/login"
+            href={loginHref}
           >
             Sign in
           </Link>

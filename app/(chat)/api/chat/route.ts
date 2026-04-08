@@ -62,7 +62,7 @@ import {
   deleteChatById,
   getAttachmentAssetsByChatId,
   getChatById,
-  getMessageCountByUserId,
+  getMessageCountsByUserId,
   getMessagesByChatId,
   retrieveRelevantAttachmentChunks,
   saveChat,
@@ -73,7 +73,10 @@ import {
 } from "@/lib/db/queries";
 import type { DBMessage } from "@/lib/db/schema";
 import { ChatbotError } from "@/lib/errors";
-import { checkIpRateLimit } from "@/lib/ratelimit";
+import {
+  checkIpRateLimit,
+  invalidateUsageCountsCache,
+} from "@/lib/ratelimit";
 import {
   deleteFilesFromS3BestEffort,
   extractStorageKeyFromFileUrl,
@@ -397,12 +400,16 @@ export async function POST(request: Request) {
       return new ChatbotError("rate_limit:chat").toResponse();
     }
 
-    const messageCount = await getMessageCountByUserId({
+    const messageCounts = await getMessageCountsByUserId({
       id: session.user.id,
-      differenceInHours: 1,
     });
 
-    if (messageCount > billingState.entitlements.maxMessagesPerHour) {
+    if (
+      messageCounts.hour > billingState.entitlements.maxMessagesPerHour ||
+      messageCounts.fiveHours >
+        billingState.entitlements.maxMessagesPer5Hours ||
+      messageCounts.week > billingState.entitlements.maxMessagesPerWeek
+    ) {
       return new ChatbotError("rate_limit:chat").toResponse();
     }
 
@@ -538,6 +545,7 @@ export async function POST(request: Request) {
               userId: session.user.id,
               userType,
             });
+            invalidateUsageCountsCache(session.user.id).catch(() => {});
           });
         },
         generateId: generateUUID,
@@ -827,6 +835,9 @@ export async function POST(request: Request) {
                 userId: session.user.id,
                 userType,
               });
+              invalidateUsageCountsCache(session.user.id).catch(
+                () => {}
+              );
             } catch (error) {
               console.error("Failed to record chat generation usage", {
                 chatId: id,

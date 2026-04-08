@@ -5,6 +5,7 @@ import {
   SidebarHistory,
 } from "@/components/chat/sidebar-history";
 import { SidebarUserNav } from "@/components/chat/sidebar-user-nav";
+import { UsageProgress } from "@/components/chat/usage-progress";
 import {
   Sidebar,
   SidebarContent,
@@ -138,6 +139,7 @@ export function AppSidebar({ user, planName }: { user: User | undefined; planNam
           <SidebarHistory user={user} />
         </SidebarContent>
         <SidebarFooter className="border-sidebar-border pt-2 pb-3">
+          {user && <UsageProgress />}
           <SidebarMenu className='pb-2'>
             {user && (
               <SidebarMenuItem>

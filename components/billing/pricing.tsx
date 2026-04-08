@@ -3,16 +3,17 @@
 import { ArrowLeftIcon, CheckCircle2Icon, MinusCircleIcon } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { NumberTicker } from "@/components/ui/number-ticker";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { BillingInterval } from "@/lib/billing/types";
 import { cn } from "@/lib/utils";
 
-export type PricingBillingPeriod = "monthly" | "yearly";
+export type PricingBillingPeriod = BillingInterval;
 
 export type PricingPlan = {
   ctaDisabled?: boolean | Partial<Record<PricingBillingPeriod, boolean>>;
@@ -33,6 +34,7 @@ export type Plans = PricingPlan[];
 
 type PricingProps = {
   backHref?: string;
+  defaultBillingPeriod?: PricingBillingPeriod;
   headerAction?: ReactNode;
   plans: Plans;
 };
@@ -52,9 +54,19 @@ function resolvePeriodValue<T>(
   return (value as T | undefined) ?? fallback;
 }
 
-const Pricing = ({ backHref, headerAction, plans }: PricingProps) => {
+const Pricing = ({
+  backHref,
+  defaultBillingPeriod = "yearly",
+  headerAction,
+  plans,
+}: PricingProps) => {
   const [billingPeriod, setBillingPeriod] =
-    useState<PricingBillingPeriod>("yearly");
+    useState<PricingBillingPeriod>(defaultBillingPeriod);
+
+  useEffect(() => {
+    setBillingPeriod(defaultBillingPeriod);
+  }, [defaultBillingPeriod]);
+
   const yearlyDiscountLabel =
     plans.find((plan) => plan.discount.toLowerCase().includes("off"))
       ?.discount ?? "20% off";

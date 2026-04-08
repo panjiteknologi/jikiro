@@ -25,6 +25,7 @@ export function DataStreamHandler() {
     for (const delta of newDeltas) {
       if (delta.type === "data-chat-title") {
         mutate(unstable_serialize(getChatHistoryPaginationKey));
+        window.dispatchEvent(new Event("usage-refresh"));
         continue;
       }
       const artifactDefinition = artifactDefinitions.find(
