@@ -1,6 +1,35 @@
 import { tool } from "ai";
 import { z } from "zod";
 
+function isWeatherResponse(weatherData: unknown): weatherData is {
+  cityName?: string;
+  current: { time: string; temperature_2m: number };
+  current_units: { temperature_2m: string };
+  hourly: { time: string[]; temperature_2m: number[] };
+  daily: { sunrise: string[]; sunset: string[] };
+} {
+  if (!weatherData || typeof weatherData !== "object") {
+    return false;
+  }
+
+  const data = weatherData as {
+    current?: { time?: string; temperature_2m?: number };
+    current_units?: { temperature_2m?: string };
+    hourly?: { time?: string[]; temperature_2m?: number[] };
+    daily?: { sunrise?: string[]; sunset?: string[] };
+  };
+
+  return (
+    typeof data.current?.time === "string" &&
+    typeof data.current?.temperature_2m === "number" &&
+    typeof data.current_units?.temperature_2m === "string" &&
+    Array.isArray(data.hourly?.time) &&
+    Array.isArray(data.hourly?.temperature_2m) &&
+    Array.isArray(data.daily?.sunrise) &&
+    Array.isArray(data.daily?.sunset)
+  );
+}
+
 async function geocodeCity(
   city: string
 ): Promise<{ latitude: number; longitude: number } | null> {
@@ -63,16 +92,34 @@ export const getWeather = tool({
       };
     }
 
-    const response = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m&hourly=temperature_2m&daily=sunrise,sunset&timezone=auto`
-    );
+    try {
+      const response = await fetch(
+        `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m&hourly=temperature_2m&daily=sunrise,sunset&timezone=auto`
+      );
 
-    const weatherData = await response.json();
+      if (!response.ok) {
+        return {
+          error: "Could not fetch weather right now. Please try again.",
+        };
+      }
 
-    if ("city" in input) {
-      weatherData.cityName = input.city;
+      const weatherData = await response.json();
+
+      if (!isWeatherResponse(weatherData)) {
+        return {
+          error: "Weather data came back in an unexpected format.",
+        };
+      }
+
+      if (input.city) {
+        weatherData.cityName = input.city;
+      }
+
+      return weatherData;
+    } catch {
+      return {
+        error: "Could not fetch weather right now. Please try again.",
+      };
     }
-
-    return weatherData;
   },
 });

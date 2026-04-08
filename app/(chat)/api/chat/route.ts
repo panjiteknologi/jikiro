@@ -20,10 +20,15 @@ import {
   getCapabilities,
   getGatewayModelById,
   IMAGE_GEN_MODEL_BY_TIER,
+  resolveOpenAIReasoningEffort,
   VISION_MODEL_BY_TIER,
 } from "@/lib/ai/models";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
-import { getEmbeddingModel, getImageModel, getLanguageModel } from "@/lib/ai/providers";
+import {
+  getEmbeddingModel,
+  getImageModel,
+  getLanguageModel,
+} from "@/lib/ai/providers";
 import { createDocument } from "@/lib/ai/tools/create-document";
 import { editDocument } from "@/lib/ai/tools/edit-document";
 import { getWeather } from "@/lib/ai/tools/get-weather";
@@ -97,6 +102,27 @@ function getStreamContext() {
 }
 
 export { getStreamContext };
+
+function hasNonEmptyTextContent(text: string) {
+  return text.trim().length > 0;
+}
+
+function sanitizeMessageParts(parts: ChatMessage["parts"]) {
+  return parts.filter((part) => {
+    if (part.type === "text" || part.type === "reasoning") {
+      return hasNonEmptyTextContent(part.text);
+    }
+
+    return true;
+  });
+}
+
+function sanitizeUIMessages(messages: ChatMessage[]) {
+  return messages.map((message) => ({
+    ...message,
+    parts: sanitizeMessageParts(message.parts),
+  }));
+}
 
 function resolvePrivateFilePartsForModel({
   messages,
@@ -314,7 +340,14 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { id, message, messages, selectedChatModel, reasoningEnabled, imageMode } = requestBody;
+    const {
+      id,
+      message,
+      messages,
+      selectedChatModel,
+      reasoningEnabled,
+      imageMode,
+    } = requestBody;
 
     const [, session] = await Promise.all([
       checkBotId().catch(() => null),
@@ -418,7 +451,7 @@ export async function POST(request: Request) {
               chatId: id,
               id: message.id,
               role: "user",
-              parts: message.parts,
+              parts: sanitizeMessageParts(message.parts),
               attachments: [],
               createdAt: new Date(),
             },
@@ -434,9 +467,21 @@ export async function POST(request: Request) {
 
       const imageStream = createUIMessageStream({
         execute: async ({ writer: dataStream }) => {
-          dataStream.write({ type: "data-kind", data: "image", transient: true });
-          dataStream.write({ type: "data-id", data: documentId, transient: true });
-          dataStream.write({ type: "data-title", data: "Generated Image", transient: true });
+          dataStream.write({
+            type: "data-kind",
+            data: "image",
+            transient: true,
+          });
+          dataStream.write({
+            type: "data-id",
+            data: documentId,
+            transient: true,
+          });
+          dataStream.write({
+            type: "data-title",
+            data: "Generated Image",
+            transient: true,
+          });
           dataStream.write({ type: "data-clear", data: null, transient: true });
 
           const { image } = await generateImage({
@@ -444,8 +489,16 @@ export async function POST(request: Request) {
             prompt: textPrompt,
           });
 
-          dataStream.write({ type: "data-imageDelta", data: image.base64, transient: true });
-          dataStream.write({ type: "data-finish", data: null, transient: true });
+          dataStream.write({
+            type: "data-imageDelta",
+            data: image.base64,
+            transient: true,
+          });
+          dataStream.write({
+            type: "data-finish",
+            data: null,
+            transient: true,
+          });
 
           await saveDocument({
             id: documentId,
@@ -531,6 +584,8 @@ export async function POST(request: Request) {
       ];
     }
 
+    uiMessages = sanitizeUIMessages(uiMessages);
+
     const { longitude, latitude, city, country } = geolocation(request);
 
     const requestHints: RequestHints = {
@@ -547,7 +602,7 @@ export async function POST(request: Request) {
             chatId: id,
             id: message.id,
             role: "user",
-            parts: message.parts,
+            parts: sanitizeMessageParts(message.parts),
             attachments: [],
             createdAt: new Date(),
           },
@@ -562,6 +617,11 @@ export async function POST(request: Request) {
     const capabilities = modelCapabilities[chatModel];
     const isReasoningModel = capabilities?.reasoning === true;
     const supportsTools = capabilities?.tools === true;
+    const openaiReasoningEffort = resolveOpenAIReasoningEffort({
+      defaultEffort: modelConfig?.reasoningEffort,
+      modelId: chatModel,
+      reasoningEnabled,
+    });
     const requiresStrictStringMessageContent =
       chatModel.startsWith("moonshotai/");
 
@@ -590,40 +650,95 @@ export async function POST(request: Request) {
 
     const sanitizedModelMessages = prunedModelMessages
       .map((modelMessage) => {
+        if (typeof modelMessage.content === "string") {
+          if (modelMessage.role === "tool") {
+            return null;
+          }
+
+          return hasNonEmptyTextContent(modelMessage.content)
+            ? {
+                ...modelMessage,
+                content: modelMessage.content.trim(),
+              }
+            : null;
+        }
+
         if (!Array.isArray(modelMessage.content)) {
           return modelMessage;
         }
 
         if (modelMessage.role === "assistant") {
-          const content = isReasoningModel
-            ? modelMessage.content
-            : modelMessage.content.filter((part) => part.type !== "reasoning");
+          const assistantContent = modelMessage.content
+            .filter((part) => {
+              if (part.type === "text" || part.type === "reasoning") {
+                return hasNonEmptyTextContent(part.text);
+              }
 
-          if (content.every((part) => part.type === "text")) {
-            return {
-              ...modelMessage,
-              content: content.map((part) => part.text).join(""),
-            };
+              return true;
+            })
+            .filter((part) =>
+              isReasoningModel ? true : part.type !== "reasoning"
+            );
+
+          if (assistantContent.every((part) => part.type === "text")) {
+            const textContent = assistantContent
+              .map((part) => part.text)
+              .join("")
+              .trim();
+
+            return hasNonEmptyTextContent(textContent)
+              ? {
+                  ...modelMessage,
+                  content: textContent,
+                }
+              : null;
           }
 
-          if (content.length === 0) {
+          if (assistantContent.length === 0) {
             return null;
           }
 
           return {
             ...modelMessage,
-            content,
+            content: assistantContent,
           };
         }
 
-        if (
-          modelMessage.role === "user" &&
-          modelMessage.content.every((part) => part.type === "text")
-        ) {
+        if (modelMessage.role === "user") {
+          const userContent = modelMessage.content.filter((part) => {
+            if (part.type === "text") {
+              return hasNonEmptyTextContent(part.text);
+            }
+
+            return true;
+          });
+
+          if (userContent.every((part) => part.type === "text")) {
+            const textContent = userContent
+              .map((part) => part.text)
+              .join("")
+              .trim();
+
+            return hasNonEmptyTextContent(textContent)
+              ? {
+                  ...modelMessage,
+                  content: textContent,
+                }
+              : null;
+          }
+
+          if (userContent.length === 0) {
+            return null;
+          }
+
           return {
             ...modelMessage,
-            content: modelMessage.content.map((part) => part.text).join(""),
+            content: userContent,
           };
+        }
+
+        if (modelMessage.content.length === 0) {
+          return null;
         }
 
         return modelMessage;
@@ -661,14 +776,12 @@ export async function POST(request: Request) {
               },
               user: session.user.id,
             },
-            ...(isReasoningModel && {
-              openai: {
-                reasoningEffort:
-                  reasoningEnabled === false
-                    ? "none"
-                    : (modelConfig?.reasoningEffort ?? "medium"),
-              },
-            }),
+            ...(isReasoningModel &&
+              openaiReasoningEffort && {
+                openai: {
+                  reasoningEffort: openaiReasoningEffort,
+                },
+              }),
           },
           onFinish: async (event) => {
             try {
@@ -761,11 +874,17 @@ export async function POST(request: Request) {
       onFinish: async ({ messages: finishedMessages }) => {
         if (isToolApprovalFlow) {
           for (const finishedMsg of finishedMessages) {
+            const sanitizedParts = sanitizeMessageParts(finishedMsg.parts);
+
+            if (sanitizedParts.length === 0) {
+              continue;
+            }
+
             const existingMsg = uiMessages.find((m) => m.id === finishedMsg.id);
             if (existingMsg) {
               await updateMessage({
                 id: finishedMsg.id,
-                parts: finishedMsg.parts,
+                parts: sanitizedParts,
               });
             } else {
               await saveMessages({
@@ -773,7 +892,7 @@ export async function POST(request: Request) {
                   {
                     id: finishedMsg.id,
                     role: finishedMsg.role,
-                    parts: finishedMsg.parts,
+                    parts: sanitizedParts,
                     createdAt: new Date(),
                     attachments: [],
                     chatId: id,
@@ -784,14 +903,16 @@ export async function POST(request: Request) {
           }
         } else if (finishedMessages.length > 0) {
           await saveMessages({
-            messages: finishedMessages.map((currentMessage) => ({
-              id: currentMessage.id,
-              role: currentMessage.role,
-              parts: currentMessage.parts,
-              createdAt: new Date(),
-              attachments: [],
-              chatId: id,
-            })),
+            messages: finishedMessages
+              .map((currentMessage) => ({
+                id: currentMessage.id,
+                role: currentMessage.role,
+                parts: sanitizeMessageParts(currentMessage.parts),
+                createdAt: new Date(),
+                attachments: [],
+                chatId: id,
+              }))
+              .filter((currentMessage) => currentMessage.parts.length > 0),
           });
         }
       },

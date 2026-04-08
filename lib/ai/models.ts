@@ -1,13 +1,14 @@
 export const DEFAULT_CHAT_MODEL = "deepseek/deepseek-v3.2";
 
-export const FREE_MODEL_IDS = [
-  "deepseek/deepseek-v3.2",
-] as const;
+export const FREE_MODEL_IDS = ["deepseek/deepseek-v3.2"] as const;
 
 export const PAID_MODEL_IDS = [
   "openai/gpt-4o",
   "openai/gpt-5-mini",
   "openai/gpt-5",
+  "anthropic/claude-haiku-4.5",
+  "anthropic/claude-sonnet-4.6",
+  "anthropic/claude-opus-4.6",
 ] as const;
 
 export const VISION_MODEL_BY_TIER = {
@@ -34,13 +35,15 @@ export type ModelCapabilities = {
   reasoning: boolean;
 };
 
+export type ReasoningEffort = "none" | "minimal" | "low" | "medium" | "high";
+
 export type ChatModel = {
   id: string;
   name: string;
   provider: string;
   description: string;
   gatewayOrder?: string[];
-  reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high";
+  reasoningEffort?: ReasoningEffort;
 };
 
 export type GatewayModelWithCapabilities = ChatModel & {
@@ -88,6 +91,24 @@ const curatedModelOverrides: ChatModel[] = [
     reasoningEffort: "medium",
   },
   {
+    id: "anthropic/claude-haiku-4.5",
+    name: "Claude Haiku 4.5",
+    provider: "anthropic",
+    description: "Fast Anthropic model for responsive everyday chats",
+  },
+  {
+    id: "anthropic/claude-sonnet-4.6",
+    name: "Claude Sonnet 4.6",
+    provider: "anthropic",
+    description: "Balanced Anthropic model for strong coding and reasoning",
+  },
+  {
+    id: "anthropic/claude-opus-4.6",
+    name: "Claude Opus 4.6",
+    provider: "anthropic",
+    description: "Flagship Anthropic model for deep reasoning and complex work",
+  },
+  {
     id: "google/gemini-2.5-flash-image",
     name: "Gemini 2.5 Flash Image",
     provider: "google",
@@ -115,10 +136,19 @@ const fallbackGatewayModels: FallbackGatewayModel[] = curatedModelOverrides.map(
           tools: true,
           vision: [
             "openai/gpt-4o",
+            "anthropic/claude-haiku-4.5",
+            "anthropic/claude-sonnet-4.6",
+            "anthropic/claude-opus-4.6",
             "google/gemini-2.5-flash",
             "google/gemini-2.5-pro",
           ].includes(model.id),
-          reasoning: ["openai/gpt-5-mini", "openai/gpt-5"].includes(model.id),
+          reasoning: [
+            "openai/gpt-5-mini",
+            "openai/gpt-5",
+            "anthropic/claude-haiku-4.5",
+            "anthropic/claude-sonnet-4.6",
+            "anthropic/claude-opus-4.6",
+          ].includes(model.id),
         },
   })
 );
@@ -321,6 +351,52 @@ export async function getAllGatewayModels(): Promise<
 export async function getGatewayModelById(modelId: string) {
   const models = await getAllGatewayModels();
   return models.find((model) => model.id === modelId) ?? null;
+}
+
+function getSupportedOpenAIReasoningEfforts(
+  modelId: string
+): readonly ReasoningEffort[] {
+  if (modelId.startsWith("openai/gpt-5.1")) {
+    return ["none", "low", "medium", "high"];
+  }
+
+  if (modelId.startsWith("openai/gpt-5")) {
+    return ["minimal", "low", "medium", "high"];
+  }
+
+  return ["low", "medium", "high"];
+}
+
+export function resolveOpenAIReasoningEffort({
+  defaultEffort,
+  modelId,
+  reasoningEnabled,
+}: {
+  defaultEffort?: ReasoningEffort;
+  modelId: string;
+  reasoningEnabled?: boolean;
+}): ReasoningEffort | undefined {
+  if (!modelId.startsWith("openai/")) {
+    return undefined;
+  }
+
+  const supportedEfforts = getSupportedOpenAIReasoningEfforts(modelId);
+  const desiredEffort =
+    reasoningEnabled === false ? "none" : (defaultEffort ?? "medium");
+
+  if (supportedEfforts.includes(desiredEffort)) {
+    return desiredEffort;
+  }
+
+  if (desiredEffort === "none" && supportedEfforts.includes("minimal")) {
+    return "minimal";
+  }
+
+  if (desiredEffort === "minimal" && supportedEfforts.includes("none")) {
+    return "none";
+  }
+
+  return supportedEfforts.includes("medium") ? "medium" : supportedEfforts[0];
 }
 
 export async function getFreeModels(): Promise<GatewayModelWithCapabilities[]> {

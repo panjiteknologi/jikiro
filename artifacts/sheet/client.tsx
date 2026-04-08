@@ -3,12 +3,14 @@ import { toast } from "sonner";
 import { Artifact } from "@/components/chat/create-artifact";
 import {
   CopyIcon,
+  DownloadIcon,
   LineChartIcon,
   RedoIcon,
   SparklesIcon,
   UndoIcon,
 } from "@/components/chat/icons";
 import { SpreadsheetEditor } from "@/components/chat/sheet-editor";
+import { exportSheetAsCsv, exportSheetAsXlsx } from "@/lib/artifacts/export";
 
 type Metadata = Record<string, never>;
 
@@ -81,6 +83,27 @@ export const sheetArtifact = new Artifact<"sheet", Metadata>({
         navigator.clipboard.writeText(cleanedCsv);
         toast.success("Copied csv to clipboard!");
       },
+    },
+    {
+      icon: <DownloadIcon size={18} />,
+      label: "Export",
+      description: "Export file",
+      items: [
+        {
+          label: "Export CSV",
+          onClick: async ({ title, content }) => {
+            await exportSheetAsCsv({ title, content });
+            toast.success("CSV export ready!");
+          },
+        },
+        {
+          label: "Export XLSX",
+          onClick: async ({ title, content }) => {
+            await exportSheetAsXlsx({ title, content });
+            toast.success("XLSX export ready!");
+          },
+        },
+      ],
     },
   ],
   toolbar: [

@@ -306,6 +306,7 @@ const PureToolbar = ({
   consoleError,
   documentId,
   artifactActions,
+  showTools = true,
   onClose,
 }: {
   isToolbarVisible: boolean;
@@ -318,6 +319,7 @@ const PureToolbar = ({
   consoleError?: string;
   documentId?: string;
   artifactActions?: ReactNode;
+  showTools?: boolean;
   onClose?: () => void;
 }) => {
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -362,6 +364,12 @@ const PureToolbar = ({
     }
   }, [status, setIsToolbarVisible]);
 
+  useEffect(() => {
+    if (!showTools) {
+      setSelectedTool(null);
+    }
+  }, [showTools]);
+
   const artifactDefinition = artifactDefinitions.find(
     (definition) => definition.kind === artifactKind
   );
@@ -377,7 +385,9 @@ const PureToolbar = ({
       ]
     : artifactDefinition.toolbar;
 
-  if (toolsByArtifactKind.length === 0) {
+  const visibleTools = showTools ? toolsByArtifactKind : [];
+
+  if (visibleTools.length === 0 && !artifactActions) {
     return null;
   }
 
@@ -447,14 +457,16 @@ const PureToolbar = ({
         ) : (
           <>
             {artifactActions}
-            <Tools
-              isAnimating={isAnimating}
-              key="tools"
-              selectedTool={selectedTool}
-              sendMessage={sendMessage}
-              setSelectedTool={setSelectedTool}
-              tools={toolsByArtifactKind}
-            />
+            {visibleTools.length > 0 ? (
+              <Tools
+                isAnimating={isAnimating}
+                key="tools"
+                selectedTool={selectedTool}
+                sendMessage={sendMessage}
+                setSelectedTool={setSelectedTool}
+                tools={visibleTools}
+              />
+            ) : null}
           </>
         )}
       </motion.div>
@@ -476,6 +488,9 @@ export const Toolbar = memo(PureToolbar, (prevProps, nextProps) => {
     return false;
   }
   if (prevProps.artifactActions !== nextProps.artifactActions) {
+    return false;
+  }
+  if (prevProps.showTools !== nextProps.showTools) {
     return false;
   }
   if (prevProps.onClose !== nextProps.onClose) {

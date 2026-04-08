@@ -81,55 +81,37 @@ const CloudIcon = ({ size = 24 }: { size?: number }) => (
 );
 
 type WeatherAtLocation = {
-  latitude: number;
-  longitude: number;
-  generationtime_ms: number;
-  utc_offset_seconds: number;
-  timezone: string;
-  timezone_abbreviation: string;
-  elevation: number;
+  latitude?: number;
+  longitude?: number;
   cityName?: string;
   current_units: {
-    time: string;
-    interval: string;
     temperature_2m: string;
   };
   current: {
     time: string;
-    interval: number;
     temperature_2m: number;
-  };
-  hourly_units: {
-    time: string;
-    temperature_2m: string;
   };
   hourly: {
     time: string[];
     temperature_2m: number[];
   };
-  daily_units: {
-    time: string;
-    sunrise: string;
-    sunset: string;
-  };
   daily: {
-    time: string[];
     sunrise: string[];
     sunset: string[];
   };
 };
 
-const SAMPLE = {
+type WeatherError = {
+  error: string;
+};
+
+type WeatherResult = WeatherAtLocation | WeatherError | null | undefined;
+
+const SAMPLE: WeatherAtLocation = {
   latitude: 37.763_283,
   longitude: -122.412_86,
-  generationtime_ms: 0.027_894_973_754_882_812,
-  utc_offset_seconds: 0,
-  timezone: "GMT",
-  timezone_abbreviation: "GMT",
-  elevation: 18,
-  current_units: { time: "iso8601", interval: "seconds", temperature_2m: "°C" },
-  current: { time: "2024-10-07T19:30", interval: 900, temperature_2m: 29.3 },
-  hourly_units: { time: "iso8601", temperature_2m: "°C" },
+  current_units: { temperature_2m: "°C" },
+  current: { time: "2024-10-07T19:30", temperature_2m: 29.3 },
   hourly: {
     time: [
       "2024-10-07T00:00",
@@ -244,19 +226,7 @@ const SAMPLE = {
       17, 18.6, 19, 19.5, 19.4, 18.5, 17.9, 17.5, 16.7, 16.3, 16.1,
     ],
   },
-  daily_units: {
-    time: "iso8601",
-    sunrise: "iso8601",
-    sunset: "iso8601",
-  },
   daily: {
-    time: [
-      "2024-10-07",
-      "2024-10-08",
-      "2024-10-09",
-      "2024-10-10",
-      "2024-10-11",
-    ],
     sunrise: [
       "2024-10-07T07:15",
       "2024-10-08T07:16",
@@ -278,23 +248,62 @@ function n(num: number): number {
   return Math.ceil(num);
 }
 
+function isWeatherAtLocation(
+  weatherAtLocation: WeatherResult
+): weatherAtLocation is WeatherAtLocation {
+  if (
+    !weatherAtLocation ||
+    typeof weatherAtLocation !== "object" ||
+    "error" in weatherAtLocation
+  ) {
+    return false;
+  }
+
+  return (
+    typeof weatherAtLocation.current?.time === "string" &&
+    typeof weatherAtLocation.current?.temperature_2m === "number" &&
+    typeof weatherAtLocation.current_units?.temperature_2m === "string" &&
+    Array.isArray(weatherAtLocation.hourly?.time) &&
+    Array.isArray(weatherAtLocation.hourly?.temperature_2m) &&
+    weatherAtLocation.hourly.time.length > 0 &&
+    weatherAtLocation.hourly.temperature_2m.length > 0 &&
+    Array.isArray(weatherAtLocation.daily?.sunrise) &&
+    Array.isArray(weatherAtLocation.daily?.sunset) &&
+    weatherAtLocation.daily.sunrise.length > 0 &&
+    weatherAtLocation.daily.sunset.length > 0
+  );
+}
+
+function getWeatherError(weatherAtLocation: WeatherResult): string | null {
+  if (typeof weatherAtLocation === "undefined") {
+    return null;
+  }
+
+  if (
+    weatherAtLocation &&
+    typeof weatherAtLocation === "object" &&
+    "error" in weatherAtLocation &&
+    typeof weatherAtLocation.error === "string"
+  ) {
+    return weatherAtLocation.error;
+  }
+
+  if (weatherAtLocation === null) {
+    return "Weather data was not available for this request.";
+  }
+
+  if (!isWeatherAtLocation(weatherAtLocation)) {
+    return "Weather data came back in an unexpected format.";
+  }
+
+  return null;
+}
+
 export function Weather({
-  weatherAtLocation = SAMPLE,
+  weatherAtLocation,
 }: {
-  weatherAtLocation?: WeatherAtLocation;
+  weatherAtLocation?: WeatherResult;
 }) {
-  const currentHigh = Math.max(
-    ...weatherAtLocation.hourly.temperature_2m.slice(0, 24)
-  );
-  const currentLow = Math.min(
-    ...weatherAtLocation.hourly.temperature_2m.slice(0, 24)
-  );
-
-  const isDay = isWithinInterval(new Date(weatherAtLocation.current.time), {
-    start: new Date(weatherAtLocation.daily.sunrise[0]),
-    end: new Date(weatherAtLocation.daily.sunset[0]),
-  });
-
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
@@ -308,24 +317,51 @@ export function Weather({
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  const errorMessage = getWeatherError(weatherAtLocation);
+
+  if (errorMessage) {
+    return (
+      <div className="w-full rounded-2xl border border-red-200/70 bg-red-50 p-4 text-red-700 shadow-sm">
+        <div className="font-medium text-sm">Weather lookup failed</div>
+        <div className="mt-1 text-sm">{errorMessage}</div>
+      </div>
+    );
+  }
+
+  const weather = isWeatherAtLocation(weatherAtLocation)
+    ? weatherAtLocation
+    : SAMPLE;
+
+  const currentHigh = Math.max(...weather.hourly.temperature_2m.slice(0, 24));
+  const currentLow = Math.min(...weather.hourly.temperature_2m.slice(0, 24));
+
+  const isDay = isWithinInterval(new Date(weather.current.time), {
+    start: new Date(weather.daily.sunrise[0]),
+    end: new Date(weather.daily.sunset[0]),
+  });
+
   const hoursToShow = isMobile ? 5 : 6;
 
-  const currentTimeIndex = weatherAtLocation.hourly.time.findIndex(
-    (time) => new Date(time) >= new Date(weatherAtLocation.current.time)
+  const currentTimeIndex = weather.hourly.time.findIndex(
+    (time) => new Date(time) >= new Date(weather.current.time)
   );
+  const displayStartIndex = currentTimeIndex >= 0 ? currentTimeIndex : 0;
 
-  const displayTimes = weatherAtLocation.hourly.time.slice(
-    currentTimeIndex,
-    currentTimeIndex + hoursToShow
+  const displayTimes = weather.hourly.time.slice(
+    displayStartIndex,
+    displayStartIndex + hoursToShow
   );
-  const displayTemperatures = weatherAtLocation.hourly.temperature_2m.slice(
-    currentTimeIndex,
-    currentTimeIndex + hoursToShow
+  const displayTemperatures = weather.hourly.temperature_2m.slice(
+    displayStartIndex,
+    displayStartIndex + hoursToShow
   );
 
   const location =
-    weatherAtLocation.cityName ||
-    `${weatherAtLocation.latitude?.toFixed(1)}°, ${weatherAtLocation.longitude?.toFixed(1)}°`;
+    weather.cityName ||
+    (typeof weather.latitude === "number" &&
+    typeof weather.longitude === "number"
+      ? `${weather.latitude.toFixed(1)}°, ${weather.longitude.toFixed(1)}°`
+      : "Current weather");
 
   return (
     <div
@@ -346,7 +382,7 @@ export function Weather({
         <div className="mb-2 flex items-center justify-between">
           <div className="font-medium text-white/80 text-xs">{location}</div>
           <div className="text-white/60 text-xs">
-            {format(new Date(weatherAtLocation.current.time), "MMM d, h:mm a")}
+            {format(new Date(weather.current.time), "MMM d, h:mm a")}
           </div>
         </div>
 
@@ -361,9 +397,9 @@ export function Weather({
               {isDay ? <SunIcon size={32} /> : <MoonIcon size={32} />}
             </div>
             <div className="font-light text-3xl text-white">
-              {n(weatherAtLocation.current.temperature_2m)}
+              {n(weather.current.temperature_2m)}
               <span className="text-lg text-white/80">
-                {weatherAtLocation.current_units.temperature_2m}
+                {weather.current_units.temperature_2m}
               </span>
             </div>
           </div>
@@ -420,12 +456,10 @@ export function Weather({
 
         <div className="mt-2 flex justify-between text-white/60 text-xs">
           <div>
-            Sunrise:{" "}
-            {format(new Date(weatherAtLocation.daily.sunrise[0]), "h:mm a")}
+            Sunrise: {format(new Date(weather.daily.sunrise[0]), "h:mm a")}
           </div>
           <div>
-            Sunset:{" "}
-            {format(new Date(weatherAtLocation.daily.sunset[0]), "h:mm a")}
+            Sunset: {format(new Date(weather.daily.sunset[0]), "h:mm a")}
           </div>
         </div>
       </div>

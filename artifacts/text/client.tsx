@@ -5,12 +5,14 @@ import { DocumentSkeleton } from "@/components/chat/document-skeleton";
 import {
   ClockRewind,
   CopyIcon,
+  DownloadIcon,
   MessageIcon,
   PenIcon,
   RedoIcon,
   UndoIcon,
 } from "@/components/chat/icons";
 import { Editor } from "@/components/chat/text-editor";
+import { exportTextAsDocx, exportTextAsPdf } from "@/lib/artifacts/export";
 import type { Suggestion } from "@/lib/db/schema";
 import { getSuggestions } from "../actions";
 
@@ -149,6 +151,27 @@ export const textArtifact = new Artifact<"text", TextArtifactMetadata>({
         navigator.clipboard.writeText(content);
         toast.success("Copied to clipboard!");
       },
+    },
+    {
+      icon: <DownloadIcon size={18} />,
+      label: "Export",
+      description: "Export file",
+      items: [
+        {
+          label: "Export DOCX",
+          onClick: async ({ title, content }) => {
+            await exportTextAsDocx({ title, content });
+            toast.success("DOCX export ready!");
+          },
+        },
+        {
+          label: "Export PDF",
+          onClick: async ({ title, content }) => {
+            await exportTextAsPdf({ title, content });
+            toast.success("PDF export ready!");
+          },
+        },
+      ],
     },
   ],
   toolbar: [

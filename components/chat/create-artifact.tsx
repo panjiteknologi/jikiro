@@ -6,7 +6,10 @@ import type { ChatMessage, CustomUIDataTypes } from "@/lib/types";
 import type { UIArtifact } from "./artifact";
 
 export type ArtifactActionContext<M = any> = {
+  title: string;
+  kind: UIArtifact["kind"];
   content: string;
+  getDocumentContentById: (index: number) => string;
   handleVersionChange: (type: "next" | "prev" | "toggle" | "latest") => void;
   currentVersionIndex: number;
   isCurrentVersion: boolean;
@@ -15,13 +18,38 @@ export type ArtifactActionContext<M = any> = {
   setMetadata: Dispatch<SetStateAction<M>>;
 };
 
-type ArtifactAction<M = any> = {
+type ArtifactActionHandler<M = any> = (
+  context: ArtifactActionContext<M>
+) => Promise<void> | void;
+
+export type ArtifactActionItem<M = any> = {
+  label: string;
+  description?: string;
+  icon?: ReactNode;
+  onClick: ArtifactActionHandler<M>;
+  isDisabled?: (context: ArtifactActionContext<M>) => boolean;
+};
+
+type ArtifactActionBase<M = any> = {
   icon: ReactNode;
   label?: string;
   description: string;
-  onClick: (context: ArtifactActionContext<M>) => Promise<void> | void;
   isDisabled?: (context: ArtifactActionContext<M>) => boolean;
 };
+
+type ArtifactButtonAction<M = any> = ArtifactActionBase<M> & {
+  onClick: ArtifactActionHandler<M>;
+  items?: never;
+};
+
+type ArtifactMenuAction<M = any> = ArtifactActionBase<M> & {
+  items: ArtifactActionItem<M>[];
+  onClick?: never;
+};
+
+export type ArtifactAction<M = any> =
+  | ArtifactButtonAction<M>
+  | ArtifactMenuAction<M>;
 
 export type ArtifactToolbarContext = {
   sendMessage: UseChatHelpers<ChatMessage>["sendMessage"];

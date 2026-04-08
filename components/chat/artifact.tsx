@@ -384,33 +384,33 @@ function PureArtifact({
           title={artifact.title}
         />
         <AnimatePresence>
-          {isCurrentVersion && (
-            <Toolbar
-              artifactActions={
-                <ArtifactActions
-                  artifact={artifact}
-                  currentVersionIndex={currentVersionIndex}
-                  handleVersionChange={handleVersionChange}
-                  isCurrentVersion={isCurrentVersion}
-                  metadata={metadata}
-                  mode={mode}
-                  setMetadata={setMetadata}
-                />
-              }
-              artifactKind={artifact.kind}
-              consoleError={consoleError}
-              documentId={artifact.documentId}
-              isToolbarVisible={isToolbarVisible}
-              onClose={() => {
-                setArtifact((prev) => ({ ...prev, isVisible: false }));
-              }}
-              sendMessage={sendMessage}
-              setIsToolbarVisible={setIsToolbarVisible}
-              setMessages={setMessages}
-              status={status}
-              stop={stop}
-            />
-          )}
+          <Toolbar
+            artifactActions={
+              <ArtifactActions
+                artifact={artifact}
+                currentVersionIndex={currentVersionIndex}
+                getDocumentContentById={getDocumentContentById}
+                handleVersionChange={handleVersionChange}
+                isCurrentVersion={isCurrentVersion}
+                metadata={metadata}
+                mode={mode}
+                setMetadata={setMetadata}
+              />
+            }
+            artifactKind={artifact.kind}
+            consoleError={consoleError}
+            documentId={artifact.documentId}
+            isToolbarVisible={isToolbarVisible}
+            onClose={() => {
+              setArtifact((prev) => ({ ...prev, isVisible: false }));
+            }}
+            sendMessage={sendMessage}
+            setIsToolbarVisible={setIsToolbarVisible}
+            setMessages={setMessages}
+            showTools={isCurrentVersion}
+            status={status}
+            stop={stop}
+          />
         </AnimatePresence>
       </div>
       <AnimatePresence>

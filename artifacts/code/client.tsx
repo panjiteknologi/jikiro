@@ -8,12 +8,14 @@ import {
 import { Artifact } from "@/components/chat/create-artifact";
 import {
   CopyIcon,
+  DownloadIcon,
   LogsIcon,
   MessageIcon,
   PlayIcon,
   RedoIcon,
   UndoIcon,
 } from "@/components/chat/icons";
+import { exportCodeAsFile } from "@/lib/artifacts/export";
 import { generateUUID } from "@/lib/utils";
 
 const OUTPUT_HANDLERS = {
@@ -249,6 +251,46 @@ export const codeArtifact = new Artifact<"code", Metadata>({
         navigator.clipboard.writeText(content);
         toast.success("Copied to clipboard!");
       },
+    },
+    {
+      icon: <DownloadIcon size={18} />,
+      label: "Export",
+      description: "Export file",
+      items: [
+        {
+          label: "Export Python (.py)",
+          onClick: async ({ title, content }) => {
+            await exportCodeAsFile({
+              title,
+              content,
+              extension: "py",
+            });
+            toast.success("Python export ready!");
+          },
+        },
+        {
+          label: "Export JavaScript (.js)",
+          onClick: async ({ title, content }) => {
+            await exportCodeAsFile({
+              title,
+              content,
+              extension: "js",
+            });
+            toast.success("JavaScript export ready!");
+          },
+        },
+        {
+          label: "Export TypeScript (.ts)",
+          onClick: async ({ title, content }) => {
+            await exportCodeAsFile({
+              title,
+              content,
+              extension: "ts",
+            });
+            toast.success("TypeScript export ready!");
+          },
+        },
+      ],
     },
   ],
   toolbar: [

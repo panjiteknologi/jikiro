@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useActionState, useEffect, useState } from "react";
 
@@ -12,7 +12,6 @@ import { type LoginActionState, login } from "../actions";
 
 export default function Page() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [isSuccessful, setIsSuccessful] = useState(false);
 
@@ -35,7 +34,9 @@ export default function Page() {
     } else if (state.status === "success") {
       setIsSuccessful(true);
       updateSession();
-      const redirect = searchParams.get("redirect");
+      const redirect = new URLSearchParams(window.location.search).get(
+        "redirect"
+      );
       router.push(redirect ?? "/");
     }
   }, [state.status]);

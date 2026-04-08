@@ -3,10 +3,16 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import equal from "fast-deep-equal";
-import { ArrowUpIcon, BrainIcon, EyeIcon, ImageIcon, WrenchIcon } from "lucide-react";
+import {
+  ArrowUpIcon,
+  BrainIcon,
+  EyeIcon,
+  ImageIcon,
+  WrenchIcon,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useTheme } from "next-themes";
 import { useSession } from "next-auth/react";
+import { useTheme } from "next-themes";
 import {
   type ChangeEvent,
   type Dispatch,
@@ -36,6 +42,7 @@ import {
   chatModels,
   DEFAULT_CHAT_MODEL,
   type ModelCapabilities,
+  PAID_MODEL_IDS,
 } from "@/lib/ai/models";
 import {
   getAttachmentAcceptAttribute,
@@ -62,10 +69,13 @@ import {
 import { SuggestedActions } from "./suggested-actions";
 import type { VisibilityType } from "./visibility-selector";
 
+const safeInitialModelIds = new Set<string>([
+  DEFAULT_CHAT_MODEL,
+  ...PAID_MODEL_IDS,
+]);
+
 const safeInitialModels = chatModels.filter((model) =>
-  [DEFAULT_CHAT_MODEL, "openai/gpt-4o", "openai/gpt-5-mini", "openai/gpt-5"].includes(
-    model.id
-  )
+  safeInitialModelIds.has(model.id)
 );
 
 function setCookie(name: string, value: string) {
@@ -710,25 +720,29 @@ function PureMultimodalInput({
               selectedModelId={selectedModelId}
               status={status}
             />
-            {!isImageModeEnabled && selectedModelCapabilities?.reasoning && onReasoningToggle && (
-              <Button
-                className={cn(
-                  "h-7 gap-1.5 rounded-lg px-2 text-xs transition-colors",
-                  isReasoningEnabled
-                    ? "bg-primary/10 text-primary hover:bg-primary/15"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-                onClick={onReasoningToggle}
-                title={isReasoningEnabled ? "Reasoning: ON" : "Reasoning: OFF"}
-                type="button"
-                variant="ghost"
-              >
-                <BrainIcon className="size-3.5" />
-                <span className="hidden sm:inline">
-                  {isReasoningEnabled ? "Thinking" : "Think"}
-                </span>
-              </Button>
-            )}
+            {!isImageModeEnabled &&
+              selectedModelCapabilities?.reasoning &&
+              onReasoningToggle && (
+                <Button
+                  className={cn(
+                    "h-7 gap-1.5 rounded-lg px-2 text-xs transition-colors",
+                    isReasoningEnabled
+                      ? "bg-primary/10 text-primary hover:bg-primary/15"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                  onClick={onReasoningToggle}
+                  title={
+                    isReasoningEnabled ? "Reasoning: ON" : "Reasoning: OFF"
+                  }
+                  type="button"
+                  variant="ghost"
+                >
+                  <BrainIcon className="size-3.5" />
+                  <span className="hidden sm:inline">
+                    {isReasoningEnabled ? "Thinking" : "Think"}
+                  </span>
+                </Button>
+              )}
             {canUseImageMode && onImageModeToggle && (
               <Button
                 className={cn(
@@ -738,7 +752,9 @@ function PureMultimodalInput({
                     : "text-muted-foreground hover:text-foreground"
                 )}
                 onClick={onImageModeToggle}
-                title={isImageModeEnabled ? "Image mode: ON" : "Image mode: OFF"}
+                title={
+                  isImageModeEnabled ? "Image mode: ON" : "Image mode: OFF"
+                }
                 type="button"
                 variant="ghost"
               >
