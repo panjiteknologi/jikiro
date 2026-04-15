@@ -1,9 +1,9 @@
 "use client";
 
 import { ChevronRight, Folder, FolderPlus, MoreHorizontal } from "lucide-react";
+import type { User } from "next-auth";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { User } from "next-auth";
 import { useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
@@ -146,12 +146,12 @@ export function SidebarProjects({ user }: { user: User | undefined }) {
                 {/* New Project button */}
                 <SidebarMenuItem>
                   <SidebarMenuButton
-                    className="h-7 rounded-md bg-primary/5 text-[13px] text-sidebar-foreground/70 transition-colors duration-150 hover:bg-sidebar-accent/50 hover:text-primary"
+                    className="h-7 rounded-md text-[13px] text-sidebar-foreground/70 transition-colors duration-150 hover:bg-sidebar-accent/50 hover:text-primary"
                     onClick={() => setShowCreateDialog(true)}
                     tooltip="New Project"
                   >
-                    <FolderPlus className="size-4 text-primary" />
-                    <span className="font-normal text-primary">
+                    <FolderPlus className="size-4" />
+                    <span className="font-normal">
                       New Project
                     </span>
                   </SidebarMenuButton>
