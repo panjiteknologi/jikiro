@@ -1203,10 +1203,10 @@ export async function getMessageCountsByUserId({
 
     const [stats] = await db
       .select({
-        hour: sql<number>`count(*) filter (where ${message.createdAt} >= ${cutoff1h})`.mapWith(
+        hour: sql<number>`count(*) filter (where ${message.createdAt} >= ${cutoff1h.toISOString()})`.mapWith(
           Number
         ),
-        fiveHours: sql<number>`count(*) filter (where ${message.createdAt} >= ${cutoff5h})`.mapWith(
+        fiveHours: sql<number>`count(*) filter (where ${message.createdAt} >= ${cutoff5h.toISOString()})`.mapWith(
           Number
         ),
         week: sql<number>`count(*)`.mapWith(Number),
