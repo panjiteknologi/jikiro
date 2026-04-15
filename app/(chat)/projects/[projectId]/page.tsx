@@ -20,9 +20,19 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs"
-import type { ChatHistory } from "@/components/chat/sidebar-history"
 import type { Chat, Project } from "@/lib/db/schema"
 import { fetcher } from "@/lib/utils"
+
+type ProjectChatListItem = Pick<
+  Chat,
+  "id" | "title" | "createdAt" | "visibility" | "projectId" | "userId"
+> & {
+  lastMessage: {
+    role: string
+    preview: string
+    createdAt: string
+  } | null
+}
 
 const API_BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? ""
 
@@ -38,9 +48,9 @@ export default function ProjectDetailPage() {
     { revalidateOnFocus: false }
   )
 
-  const { data: chatHistory, isLoading: chatsLoading } = useSWR<ChatHistory>(
+  const { data: chats, isLoading: chatsLoading } = useSWR<ProjectChatListItem[]>(
     projectId
-      ? `${API_BASE}/api/history?project_id=${projectId}&limit=50`
+      ? `${API_BASE}/api/projects/${projectId}/chats?limit=50`
       : null,
     fetcher,
     { revalidateOnFocus: false }
@@ -67,7 +77,7 @@ export default function ProjectDetailPage() {
     )
   }
 
-  const chats: Chat[] = chatHistory?.chats ?? []
+  const chatList: ProjectChatListItem[] = chats ?? []
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
@@ -111,7 +121,7 @@ export default function ProjectDetailPage() {
         <TabsContent value="chats">
           {chatsLoading ? (
             <ChatListSkeleton />
-          ) : chats.length === 0 ? (
+          ) : chatList.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
               <MessageSquareIcon className="size-10 text-muted-foreground/30" />
               <p className="text-sm text-muted-foreground">
@@ -120,16 +130,21 @@ export default function ProjectDetailPage() {
             </div>
           ) : (
             <div className="divide-y divide-border">
-              {chats.map((chat) => (
+              {chatList.map((chat) => (
                 <Link
                   key={chat.id}
                   href={`/chat/${chat.id}`}
-                  className="flex items-center justify-between gap-4 py-3.5 hover:bg-muted/40 px-2 rounded-lg transition-colors"
+                  className="flex items-start justify-between gap-4 py-3.5 hover:bg-muted/40 px-2 rounded-lg transition-colors"
                 >
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{chat.title}</p>
+                    {chat.lastMessage?.preview ? (
+                      <p className="mt-1 truncate text-xs text-muted-foreground">
+                        {chat.lastMessage.preview}
+                      </p>
+                    ) : null}
                   </div>
-                  <span className="shrink-0 text-xs text-muted-foreground">
+                  <span className="shrink-0 pt-0.5 text-xs text-muted-foreground">
                     {formatDistanceToNow(new Date(chat.createdAt), {
                       addSuffix: true,
                     })}
@@ -168,8 +183,11 @@ function ChatListSkeleton() {
   return (
     <div className="divide-y divide-border">
       {[1, 2, 3, 4].map((i) => (
-        <div key={i} className="flex items-center justify-between gap-4 py-3.5 px-2">
-          <Skeleton className="h-4 w-3/4" />
+        <div key={i} className="flex items-start justify-between gap-4 py-3.5 px-2">
+          <div className="min-w-0 flex-1 space-y-2">
+            <Skeleton className="h-4 w-3/4" />
+            <Skeleton className="h-3 w-5/6" />
+          </div>
           <Skeleton className="h-3 w-16" />
         </div>
       ))}

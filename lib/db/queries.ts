@@ -383,6 +383,64 @@ export async function getChatsByUserId({
   }
 }
 
+export async function getProjectChatsWithLastMessage({
+  userId,
+  projectId,
+  limit,
+}: {
+  userId: string;
+  projectId: string;
+  limit: number;
+}) {
+  try {
+    const chats = await db
+      .select()
+      .from(chat)
+      .where(and(eq(chat.userId, userId), eq(chat.projectId, projectId)))
+      .orderBy(desc(chat.createdAt))
+      .limit(limit);
+
+    if (chats.length === 0) {
+      return [];
+    }
+
+    const chatIds = chats.map((c) => c.id);
+
+    const lastMessages = await db
+      .selectDistinctOn([message.chatId], {
+        chatId: message.chatId,
+        role: message.role,
+        parts: message.parts,
+        createdAt: message.createdAt,
+      })
+      .from(message)
+      .where(inArray(message.chatId, chatIds))
+      .orderBy(message.chatId, desc(message.createdAt));
+
+    const messageByChatId = new Map<
+      string,
+      { role: string; parts: unknown; createdAt: Date }
+    >();
+    for (const msg of lastMessages) {
+      messageByChatId.set(msg.chatId, {
+        role: msg.role,
+        parts: msg.parts,
+        createdAt: msg.createdAt,
+      });
+    }
+
+    return chats.map((c) => ({
+      ...c,
+      lastMessage: messageByChatId.get(c.id) ?? null,
+    }));
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to get project chats with last message"
+    );
+  }
+}
+
 export async function getChatById({ id }: { id: string }) {
   try {
     const [selectedChat] = await db.select().from(chat).where(eq(chat.id, id));

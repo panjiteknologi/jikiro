@@ -8,7 +8,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { ActivityIcon } from "lucide-react";
+import { ActivityIcon, ChevronRight } from "lucide-react";
 
 type UsageData = {
   counts: { hour: number; fiveHours: number; week: number };
@@ -53,6 +53,7 @@ function UsageBar({
 
 export function UsageProgress() {
   const [data, setData] = useState<UsageData | null>(null);
+  const [isOpen, setIsOpen] = useState(true);
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
 
@@ -116,31 +117,40 @@ export function UsageProgress() {
 
   return (
     <SidebarGroup className="px-3 py-2">
-      <SidebarGroupLabel className="mb-1 px-0 text-[11px] font-medium text-sidebar-foreground/40">
-        Usage
+      <SidebarGroupLabel
+        className="mb-1 cursor-pointer select-none px-0 text-[11px] font-medium text-sidebar-foreground/40 hover:text-sidebar-foreground/70 transition-colors"
+        onClick={() => setIsOpen((prev) => !prev)}
+      >
+        <span>Usage</span>
+        <ChevronRight
+          className={`transition-transform duration-200 ${isOpen ? "rotate-90" : ""}`}
+          style={{ width: 12, height: 12 }}
+        />
       </SidebarGroupLabel>
-      <SidebarGroupContent className="space-y-2">
-        <UsageBar
-          label="Credits"
-          count={creditsUsed}
-          limit={data.credits.included}
-        />
-        <UsageBar
-          label="Per hour"
-          count={data.counts.hour}
-          limit={data.limits.hour}
-        />
-        <UsageBar
-          label="Per 5 hours"
-          count={data.counts.fiveHours}
-          limit={data.limits.fiveHours}
-        />
-        <UsageBar
-          label="Per week"
-          count={data.counts.week}
-          limit={data.limits.week}
-        />
-      </SidebarGroupContent>
+      {isOpen && (
+        <SidebarGroupContent className="space-y-2">
+          <UsageBar
+            label="Credits"
+            count={creditsUsed}
+            limit={data.credits.included}
+          />
+          <UsageBar
+            label="Per hour"
+            count={data.counts.hour}
+            limit={data.limits.hour}
+          />
+          <UsageBar
+            label="Per 5 hours"
+            count={data.counts.fiveHours}
+            limit={data.limits.fiveHours}
+          />
+          <UsageBar
+            label="Per week"
+            count={data.counts.week}
+            limit={data.limits.week}
+          />
+        </SidebarGroupContent>
+      )}
     </SidebarGroup>
   );
 }
