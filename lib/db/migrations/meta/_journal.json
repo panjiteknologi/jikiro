@@ -43,6 +43,13 @@
       "when": 1775230078174,
       "tag": "0005_right_jean_grey",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1776245306607,
+      "tag": "0006_amazing_jubilee",
+      "breakpoints": true
     }
   ]
 }

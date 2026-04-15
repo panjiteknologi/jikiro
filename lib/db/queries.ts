@@ -329,7 +329,9 @@ export async function getChatsByUserId({
       db
         .select()
         .from(chat)
-        .where(whereCondition ? and(whereCondition, baseCondition) : baseCondition)
+        .where(
+          whereCondition ? and(whereCondition, baseCondition) : baseCondition
+        )
         .orderBy(desc(chat.createdAt))
         .limit(extendedLimit);
 
@@ -456,7 +458,9 @@ export async function getChatById({ id }: { id: string }) {
 
 export async function createAttachmentAsset({
   chatId,
+  projectId,
   contentType,
+  extractedText,
   filename,
   id,
   sizeBytes,
@@ -464,8 +468,10 @@ export async function createAttachmentAsset({
   storageKey,
   userId,
 }: {
-  chatId: string;
+  chatId?: string | null;
+  projectId?: string | null;
   contentType: SupportedAttachmentMimeType;
+  extractedText?: string | null;
   filename: string;
   id?: string;
   sizeBytes: number;
@@ -473,18 +479,27 @@ export async function createAttachmentAsset({
   storageKey: string;
   userId: string;
 }) {
+  if ((chatId == null) === (projectId == null)) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Attachment must be scoped to exactly one of chatId or projectId"
+    );
+  }
+
   try {
     const [createdAttachment] = await db
       .insert(attachmentAsset)
       .values({
         ...(id ? { id } : {}),
         userId,
-        chatId,
+        chatId: chatId ?? null,
+        projectId: projectId ?? null,
         storageKey,
         filename,
         contentType,
         sizeBytes,
         status,
+        ...(typeof extractedText === "string" ? { extractedText } : {}),
         updatedAt: new Date(),
       })
       .returning();
@@ -599,14 +614,23 @@ export async function updateAttachmentAssetStatus({
 export async function replaceAttachmentChunks({
   attachmentId,
   chatId,
+  projectId,
   chunks,
   userId,
 }: {
   attachmentId: string;
-  chatId: string;
+  chatId?: string | null;
+  projectId?: string | null;
   chunks: { embedding: number[]; text: string }[];
   userId: string;
 }) {
+  if ((chatId == null) === (projectId == null)) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Chunks must be scoped to exactly one of chatId or projectId"
+    );
+  }
+
   try {
     for (const chunk of chunks) {
       assertAttachmentEmbeddingDimensions(chunk.embedding);
@@ -625,7 +649,8 @@ export async function replaceAttachmentChunks({
         chunks.map((chunk, index) => ({
           attachmentId,
           userId,
-          chatId,
+          chatId: chatId ?? null,
+          projectId: projectId ?? null,
           chunkIndex: index,
           text: chunk.text,
           embedding: chunk.embedding,
@@ -806,15 +831,211 @@ export async function getAttachmentAssetsByUserId({
   }
 }
 
+export async function getAttachmentAssetsByProjectId({
+  projectId,
+  userId,
+}: {
+  projectId: string;
+  userId: string;
+}) {
+  try {
+    return await db
+      .select()
+      .from(attachmentAsset)
+      .where(
+        and(
+          eq(attachmentAsset.projectId, projectId),
+          eq(attachmentAsset.userId, userId)
+        )
+      )
+      .orderBy(desc(attachmentAsset.createdAt));
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to get attachment assets by project id"
+    );
+  }
+}
+
+export async function getAttachmentAssetCountByProjectId({
+  projectId,
+  userId,
+}: {
+  projectId: string;
+  userId: string;
+}) {
+  try {
+    const [row] = await db
+      .select({
+        count: count(attachmentAsset.id),
+      })
+      .from(attachmentAsset)
+      .where(
+        and(
+          eq(attachmentAsset.projectId, projectId),
+          eq(attachmentAsset.userId, userId)
+        )
+      );
+
+    return row?.count ?? 0;
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to get attachment asset count by project id"
+    );
+  }
+}
+
+export async function getReadableAttachmentsForChat({
+  chatId,
+  projectId,
+  userId,
+}: {
+  chatId: string;
+  projectId?: string | null;
+  userId: string;
+}) {
+  try {
+    const scopeCondition = projectId
+      ? sql`(${attachmentAsset.chatId} = ${chatId} OR ${attachmentAsset.projectId} = ${projectId})`
+      : eq(attachmentAsset.chatId, chatId);
+
+    return await db
+      .select()
+      .from(attachmentAsset)
+      .where(and(eq(attachmentAsset.userId, userId), scopeCondition));
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to get readable attachments for chat"
+    );
+  }
+}
+
+export async function getProjectTextAsset({
+  projectId,
+  userId,
+}: {
+  projectId: string;
+  userId: string;
+}) {
+  try {
+    const [row] = await db
+      .select()
+      .from(attachmentAsset)
+      .where(
+        and(
+          eq(attachmentAsset.projectId, projectId),
+          eq(attachmentAsset.userId, userId),
+          eq(attachmentAsset.contentType, "text/plain")
+        )
+      )
+      .limit(1);
+
+    return row ?? null;
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to get project text asset"
+    );
+  }
+}
+
+export async function upsertProjectTextAsset({
+  projectId,
+  userId,
+  text: rawText,
+}: {
+  projectId: string;
+  userId: string;
+  text: string;
+}) {
+  try {
+    const sizeBytes = Buffer.byteLength(rawText, "utf8");
+    const storageKey = `project-text:${projectId}`;
+
+    const existing = await getProjectTextAsset({ projectId, userId });
+
+    if (existing) {
+      const [updated] = await db
+        .update(attachmentAsset)
+        .set({
+          extractedText: rawText,
+          sizeBytes,
+          status: "indexing",
+          error: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(attachmentAsset.id, existing.id))
+        .returning();
+
+      return updated;
+    }
+
+    const [inserted] = await db
+      .insert(attachmentAsset)
+      .values({
+        userId,
+        projectId,
+        chatId: null,
+        storageKey,
+        filename: "Project context",
+        contentType: "text/plain",
+        sizeBytes,
+        status: "indexing",
+        extractedText: rawText,
+        updatedAt: new Date(),
+      })
+      .returning();
+
+    return inserted;
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to upsert project text asset"
+    );
+  }
+}
+
+export async function deleteProjectTextAsset({
+  projectId,
+  userId,
+}: {
+  projectId: string;
+  userId: string;
+}) {
+  try {
+    const [deleted] = await db
+      .delete(attachmentAsset)
+      .where(
+        and(
+          eq(attachmentAsset.projectId, projectId),
+          eq(attachmentAsset.userId, userId),
+          eq(attachmentAsset.contentType, "text/plain")
+        )
+      )
+      .returning();
+
+    return deleted ?? null;
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to delete project text asset"
+    );
+  }
+}
+
 export async function retrieveRelevantAttachmentChunks({
   attachmentIds,
   chatId,
+  projectId,
   embedding,
   limit,
   userId,
 }: {
   attachmentIds?: string[];
   chatId: string;
+  projectId?: string | null;
   embedding: number[];
   limit: number;
   userId: string;
@@ -828,11 +1049,16 @@ export async function retrieveRelevantAttachmentChunks({
         "distance"
       );
 
-    const rows: Array<RetrievedDocumentChunk & { distance: number }> = await db
+    const scopeCondition = projectId
+      ? sql`(${attachmentChunk.chatId} = ${chatId} OR ${attachmentChunk.projectId} = ${projectId})`
+      : eq(attachmentChunk.chatId, chatId);
+
+    const rows = await db
       .select({
         attachmentId: attachmentChunk.attachmentId,
         filename: attachmentAsset.filename,
         text: attachmentChunk.text,
+        projectId: attachmentAsset.projectId,
         distance,
       })
       .from(attachmentChunk)
@@ -843,7 +1069,7 @@ export async function retrieveRelevantAttachmentChunks({
       .where(
         and(
           eq(attachmentChunk.userId, userId),
-          eq(attachmentChunk.chatId, chatId),
+          scopeCondition,
           eq(attachmentAsset.status, "ready"),
           attachmentIds && attachmentIds.length > 0
             ? inArray(attachmentChunk.attachmentId, attachmentIds)
@@ -853,11 +1079,14 @@ export async function retrieveRelevantAttachmentChunks({
       .orderBy(distance)
       .limit(limit);
 
-    return rows.map(({ attachmentId, filename, text }) => ({
-      attachmentId,
-      filename,
-      text,
-    }));
+    return rows.map(
+      ({ attachmentId, filename, text, projectId: rowProjectId }) => ({
+        attachmentId,
+        filename,
+        text,
+        origin: rowProjectId ? ("project" as const) : ("chat" as const),
+      })
+    );
   } catch (_error) {
     throw new ChatbotError(
       "bad_request:database",
@@ -1264,9 +1493,10 @@ export async function getMessageCountsByUserId({
         hour: sql<number>`count(*) filter (where ${message.createdAt} >= ${cutoff1h.toISOString()})`.mapWith(
           Number
         ),
-        fiveHours: sql<number>`count(*) filter (where ${message.createdAt} >= ${cutoff5h.toISOString()})`.mapWith(
-          Number
-        ),
+        fiveHours:
+          sql<number>`count(*) filter (where ${message.createdAt} >= ${cutoff5h.toISOString()})`.mapWith(
+            Number
+          ),
         week: sql<number>`count(*)`.mapWith(Number),
       })
       .from(message)
@@ -1435,10 +1665,7 @@ export async function updateProject({
 
     return updated ?? null;
   } catch (_error) {
-    throw new ChatbotError(
-      "bad_request:database",
-      "Failed to update project"
-    );
+    throw new ChatbotError("bad_request:database", "Failed to update project");
   }
 }
 
@@ -1448,18 +1675,30 @@ export async function deleteProject({
 }: {
   id: string;
   userId: string;
-}): Promise<Project | null> {
+}): Promise<{ deleted: Project | null; storageKeysToDelete: string[] }> {
   try {
+    const storageKeys = await db
+      .select({ storageKey: attachmentAsset.storageKey })
+      .from(attachmentAsset)
+      .where(
+        and(
+          eq(attachmentAsset.projectId, id),
+          eq(attachmentAsset.userId, userId)
+        )
+      );
+
     const [deleted] = await db
       .delete(project)
       .where(and(eq(project.id, id), eq(project.userId, userId)))
       .returning();
 
-    return deleted ?? null;
+    return {
+      deleted: deleted ?? null,
+      storageKeysToDelete: storageKeys
+        .map((row) => row.storageKey)
+        .filter((key) => !key.startsWith("project-text:")),
+    };
   } catch (_error) {
-    throw new ChatbotError(
-      "bad_request:database",
-      "Failed to delete project"
-    );
+    throw new ChatbotError("bad_request:database", "Failed to delete project");
   }
 }

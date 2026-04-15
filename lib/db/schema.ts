@@ -3,6 +3,7 @@ import {
   boolean,
   customType,
   foreignKey,
+  index,
   integer,
   json,
   pgEnum,
@@ -270,7 +271,10 @@ export const attachmentAsset = pgTable(
     userId: uuid("userId")
       .notNull()
       .references(() => user.id),
-    chatId: uuid("chatId").notNull(),
+    chatId: uuid("chatId"),
+    projectId: uuid("projectId").references(() => project.id, {
+      onDelete: "cascade",
+    }),
     storageKey: text("storageKey").notNull(),
     filename: text("filename").notNull(),
     contentType: varchar("contentType", {
@@ -288,6 +292,7 @@ export const attachmentAsset = pgTable(
     storageKeyIdx: uniqueIndex("AttachmentAsset_storageKey_idx").on(
       table.storageKey
     ),
+    projectIdx: index("AttachmentAsset_projectId_idx").on(table.projectId),
   })
 );
 
@@ -303,7 +308,10 @@ export const attachmentChunk = pgTable(
     userId: uuid("userId")
       .notNull()
       .references(() => user.id),
-    chatId: uuid("chatId").notNull(),
+    chatId: uuid("chatId"),
+    projectId: uuid("projectId").references(() => project.id, {
+      onDelete: "cascade",
+    }),
     chunkIndex: integer("chunkIndex").notNull(),
     text: text("text").notNull(),
     embedding: pgVector("embedding").notNull(),
@@ -313,6 +321,10 @@ export const attachmentChunk = pgTable(
     attachmentChunkIdx: uniqueIndex("AttachmentChunk_attachment_chunk_idx").on(
       table.attachmentId,
       table.chunkIndex
+    ),
+    projectUserIdx: index("AttachmentChunk_projectId_userId_idx").on(
+      table.projectId,
+      table.userId
     ),
   })
 );

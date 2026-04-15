@@ -1,63 +1,56 @@
-"use client"
+"use client";
 
-import { formatDistanceToNow } from "date-fns"
+import { formatDistanceToNow } from "date-fns";
 import {
   FolderIcon,
   FolderOpenIcon,
   MessageSquareIcon,
   PlusIcon,
-  UploadCloudIcon,
-} from "lucide-react"
-import Link from "next/link"
-import { useParams, useRouter } from "next/navigation"
-import useSWR from "swr"
+} from "lucide-react";
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+import useSWR from "swr";
 
-import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs"
-import type { Chat, Project } from "@/lib/db/schema"
-import { fetcher } from "@/lib/utils"
+import { ProjectResourcesPanel } from "@/components/projects/resources/project-resources-panel";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { Chat, Project } from "@/lib/db/schema";
+import { fetcher } from "@/lib/utils";
 
 type ProjectChatListItem = Pick<
   Chat,
   "id" | "title" | "createdAt" | "visibility" | "projectId" | "userId"
 > & {
   lastMessage: {
-    role: string
-    preview: string
-    createdAt: string
-  } | null
-}
+    role: string;
+    preview: string;
+    createdAt: string;
+  } | null;
+};
 
-const API_BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? ""
+const API_BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 export default function ProjectDetailPage() {
-  const { projectId } = useParams<{ projectId: string }>()
-  const router = useRouter()
+  const { projectId } = useParams<{ projectId: string }>();
+  const router = useRouter();
 
   const { data: project, isLoading: projectLoading } = useSWR<Project>(
-    projectId
-      ? `${API_BASE}/api/projects/${projectId}`
-      : null,
+    projectId ? `${API_BASE}/api/projects/${projectId}` : null,
     fetcher,
     { revalidateOnFocus: false }
-  )
+  );
 
-  const { data: chats, isLoading: chatsLoading } = useSWR<ProjectChatListItem[]>(
-    projectId
-      ? `${API_BASE}/api/projects/${projectId}/chats?limit=50`
-      : null,
+  const { data: chats, isLoading: chatsLoading } = useSWR<
+    ProjectChatListItem[]
+  >(
+    projectId ? `${API_BASE}/api/projects/${projectId}/chats?limit=50` : null,
     fetcher,
     { revalidateOnFocus: false }
-  )
+  );
 
   if (projectLoading) {
-    return <ProjectDetailSkeleton />
+    return <ProjectDetailSkeleton />;
   }
 
   if (!project) {
@@ -74,17 +67,19 @@ export default function ProjectDetailPage() {
           <Link href="/projects">Back to Projects</Link>
         </Button>
       </div>
-    )
+    );
   }
 
-  const chatList: ProjectChatListItem[] = chats ?? []
+  const chatList: ProjectChatListItem[] = chats ?? [];
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
       {/* Header */}
       <div className="mb-8 flex items-center gap-3">
         <FolderOpenIcon className="size-7 shrink-0 text-primary" />
-        <h1 className="text-2xl font-semibold tracking-tight">{project.name}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {project.name}
+        </h1>
       </div>
 
       {/* New chat bar */}
@@ -155,35 +150,23 @@ export default function ProjectDetailPage() {
           )}
         </TabsContent>
 
-        {/* Sources tab — placeholder */}
+        {/* Sources tab */}
         <TabsContent value="sources">
-          <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border py-16 text-center">
-            <div className="flex gap-3">
-              <div className="flex size-10 items-center justify-center rounded-full bg-muted">
-                <UploadCloudIcon className="size-5 text-muted-foreground" />
-              </div>
-            </div>
-            <div className="max-w-xs">
-              <p className="font-medium">Give this project more context</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Upload files or connect apps to give the AI deeper context about this project.
-              </p>
-            </div>
-            <Button variant="outline" disabled>
-              Add source
-            </Button>
-          </div>
+          <ProjectResourcesPanel projectId={projectId} />
         </TabsContent>
       </Tabs>
     </div>
-  )
+  );
 }
 
 function ChatListSkeleton() {
   return (
     <div className="divide-y divide-border">
       {[1, 2, 3, 4].map((i) => (
-        <div key={i} className="flex items-start justify-between gap-4 py-3.5 px-2">
+        <div
+          key={i}
+          className="flex items-start justify-between gap-4 py-3.5 px-2"
+        >
           <div className="min-w-0 flex-1 space-y-2">
             <Skeleton className="h-4 w-3/4" />
             <Skeleton className="h-3 w-5/6" />
@@ -192,7 +175,7 @@ function ChatListSkeleton() {
         </div>
       ))}
     </div>
-  )
+  );
 }
 
 function ProjectDetailSkeleton() {
@@ -206,5 +189,5 @@ function ProjectDetailSkeleton() {
       <Skeleton className="mb-4 h-9 w-40 rounded-lg" />
       <ChatListSkeleton />
     </div>
-  )
+  );
 }
