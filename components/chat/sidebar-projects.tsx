@@ -1,19 +1,14 @@
-"use client"
+"use client";
 
-import {
-  ChevronRight,
-  Folder,
-  FolderPlus,
-  MoreHorizontal,
-} from "lucide-react"
-import type { User } from "next-auth"
-import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { useState } from "react"
-import { toast } from "sonner"
-import useSWR from "swr"
+import { ChevronRight, Folder, FolderPlus, MoreHorizontal } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import type { User } from "next-auth";
+import { useState } from "react";
+import { toast } from "sonner";
+import useSWR from "swr";
 
-import { Button } from "@/components/ui/button"
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -21,13 +16,13 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover"
+} from "@/components/ui/popover";
 import {
   SidebarGroup,
   SidebarGroupLabel,
@@ -35,14 +30,14 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
-} from "@/components/ui/sidebar"
-import type { Project } from "@/lib/db/schema"
-import { fetcher } from "@/lib/utils"
+} from "@/components/ui/sidebar";
+import type { Project } from "@/lib/db/schema";
+import { fetcher } from "@/lib/utils";
 
-const MAX_VISIBLE_PROJECTS = 5
+const MAX_VISIBLE_PROJECTS = 5;
 
 function ProjectSkeletons({ count = 3 }: { count?: number }) {
-  const widths = [44, 32, 28, 64, 52]
+  const widths = [44, 32, 28, 64, 52];
   return (
     <div className="flex flex-col px-1">
       {widths.slice(0, count).map((w) => (
@@ -54,16 +49,16 @@ function ProjectSkeletons({ count = 3 }: { count?: number }) {
         </div>
       ))}
     </div>
-  )
+  );
 }
 
 export function SidebarProjects({ user }: { user: User | undefined }) {
-  const { isMobile, setOpenMobile } = useSidebar()
-  const pathname = usePathname()
-  const [isOpen, setIsOpen] = useState(true)
-  const [showCreateDialog, setShowCreateDialog] = useState(false)
-  const [projectName, setProjectName] = useState("")
-  const [isCreating, setIsCreating] = useState(false)
+  const { isMobile, setOpenMobile } = useSidebar();
+  const pathname = usePathname();
+  const [isOpen, setIsOpen] = useState(true);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [projectName, setProjectName] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
 
   const {
     data: projects,
@@ -73,17 +68,31 @@ export function SidebarProjects({ user }: { user: User | undefined }) {
     user ? `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/projects` : null,
     fetcher,
     { fallbackData: [], revalidateOnFocus: false }
-  )
+  );
 
-  const visibleProjects = projects?.slice(0, MAX_VISIBLE_PROJECTS) ?? []
-  const moreProjects = projects?.slice(MAX_VISIBLE_PROJECTS) ?? []
-  const hasMore = moreProjects.length > 0
+  const chatIdFromPath = pathname?.startsWith("/chat/")
+    ? (pathname.split("/")[2] ?? null)
+    : null;
+
+  const { data: currentChat } = useSWR<{ projectId: string | null }>(
+    chatIdFromPath
+      ? `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/messages?chatId=${chatIdFromPath}`
+      : null,
+    fetcher,
+    { revalidateOnFocus: false }
+  );
+
+  const currentChatProjectId = currentChat?.projectId ?? null;
+
+  const visibleProjects = projects?.slice(0, MAX_VISIBLE_PROJECTS) ?? [];
+  const moreProjects = projects?.slice(MAX_VISIBLE_PROJECTS) ?? [];
+  const hasMore = moreProjects.length > 0;
 
   const handleCreate = async () => {
-    const name = projectName.trim()
-    if (!name) return
+    const name = projectName.trim();
+    if (!name) return;
 
-    setIsCreating(true)
+    setIsCreating(true);
     try {
       const res = await fetch(
         `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/projects`,
@@ -92,27 +101,27 @@ export function SidebarProjects({ user }: { user: User | undefined }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name }),
         }
-      )
+      );
 
       if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.cause || "Failed to create project")
+        const err = await res.json();
+        throw new Error(err.cause || "Failed to create project");
       }
 
-      await mutate()
-      setShowCreateDialog(false)
-      setProjectName("")
-      toast.success("Project created")
+      await mutate();
+      setShowCreateDialog(false);
+      setProjectName("");
+      toast.success("Project created");
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Failed to create project"
-      )
+      );
     } finally {
-      setIsCreating(false)
+      setIsCreating(false);
     }
-  }
+  };
 
-  if (!user) return null
+  if (!user) return null;
 
   return (
     <>
@@ -123,8 +132,8 @@ export function SidebarProjects({ user }: { user: User | undefined }) {
         >
           <span>Projects</span>
           <ChevronRight
-            style={{ width: 12, height: 12 }}
             className={`transition-transform duration-200 ${isOpen ? "rotate-90" : ""}`}
+            style={{ width: 12, height: 12 }}
           />
         </SidebarGroupLabel>
 
@@ -142,19 +151,24 @@ export function SidebarProjects({ user }: { user: User | undefined }) {
                     tooltip="New Project"
                   >
                     <FolderPlus className="size-4 text-primary" />
-                    <span className="font-normal text-primary">New Project</span>
+                    <span className="font-normal text-primary">
+                      New Project
+                    </span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
 
                 {/* Visible projects */}
                 {visibleProjects.map((project) => {
-                  const isActive = pathname === `/projects/${project.id}`
+                  const isActive =
+                    pathname === `/projects/${project.id}` ||
+                    pathname?.startsWith(`/projects/${project.id}/`) ||
+                    currentChatProjectId === project.id;
                   return (
                     <SidebarMenuItem key={project.id}>
                       <SidebarMenuButton
                         asChild
-                        isActive={isActive}
                         className="h-7 rounded-lg text-sidebar-foreground/40 transition-colors duration-150 hover:bg-primary/10 hover:text-primary data-[active=true]:bg-primary/10 data-[active=true]:text-primary"
+                        isActive={isActive}
                         tooltip={project.name}
                       >
                         <Link
@@ -168,7 +182,7 @@ export function SidebarProjects({ user }: { user: User | undefined }) {
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
-                  )
+                  );
                 })}
 
                 {/* More button */}
@@ -187,27 +201,34 @@ export function SidebarProjects({ user }: { user: User | undefined }) {
                         </SidebarMenuButton>
                       </PopoverTrigger>
                       <PopoverContent
-                        side={isMobile ? "bottom" : "right"}
                         align="start"
                         className="w-56 p-1"
+                        side={isMobile ? "bottom" : "right"}
                       >
                         <div className="flex flex-col gap-0.5">
                           {isLoading ? (
                             <ProjectSkeletons count={3} />
                           ) : (
                             moreProjects.map((project) => {
-                              const isActive = pathname === `/projects/${project.id}`
+                              const isActive =
+                                pathname === `/projects/${project.id}` ||
+                                pathname?.startsWith(
+                                  `/projects/${project.id}/`
+                                ) ||
+                                currentChatProjectId === project.id;
                               return (
                                 <Link
-                                  key={project.id}
-                                  href={`/projects/${project.id}`}
-                                  onClick={() => setOpenMobile(false)}
                                   className={`flex h-7 w-full items-center gap-2 rounded-lg px-2 text-[13px] transition-colors ${isActive ? "bg-primary/10 text-primary" : "text-foreground/70 hover:bg-muted hover:text-foreground"}`}
+                                  href={`/projects/${project.id}`}
+                                  key={project.id}
+                                  onClick={() => setOpenMobile(false)}
                                 >
                                   <Folder className="size-4 shrink-0" />
-                                  <span className="truncate">{project.name}</span>
+                                  <span className="truncate">
+                                    {project.name}
+                                  </span>
                                 </Link>
-                              )
+                              );
                             })
                           )}
                         </div>
@@ -222,7 +243,7 @@ export function SidebarProjects({ user }: { user: User | undefined }) {
       </SidebarGroup>
 
       {/* Create Project Dialog */}
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+      <Dialog onOpenChange={setShowCreateDialog} open={showCreateDialog}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>New Project</DialogTitle>
@@ -232,28 +253,28 @@ export function SidebarProjects({ user }: { user: User | undefined }) {
           </DialogHeader>
           <form
             onSubmit={(e) => {
-              e.preventDefault()
-              handleCreate()
+              e.preventDefault();
+              handleCreate();
             }}
           >
             <Input
-              placeholder="Project name"
-              value={projectName}
-              onChange={(e) => setProjectName(e.target.value)}
               autoFocus
               maxLength={100}
+              onChange={(e) => setProjectName(e.target.value)}
+              placeholder="Project name"
+              value={projectName}
             />
             <DialogFooter className="mt-4">
               <Button
+                onClick={() => setShowCreateDialog(false)}
                 type="button"
                 variant="outline"
-                onClick={() => setShowCreateDialog(false)}
               >
                 Cancel
               </Button>
               <Button
-                type="submit"
                 disabled={!projectName.trim() || isCreating}
+                type="submit"
               >
                 {isCreating ? "Creating..." : "Create"}
               </Button>
@@ -262,5 +283,5 @@ export function SidebarProjects({ user }: { user: User | undefined }) {
         </DialogContent>
       </Dialog>
     </>
-  )
+  );
 }

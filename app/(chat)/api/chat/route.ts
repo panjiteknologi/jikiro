@@ -64,6 +64,7 @@ import {
   getChatById,
   getMessageCountsByUserId,
   getMessagesByChatId,
+  getProjectById,
   retrieveRelevantAttachmentChunks,
   saveChat,
   saveDocument,
@@ -350,6 +351,7 @@ export async function POST(request: Request) {
       selectedChatModel,
       reasoningEnabled,
       imageMode,
+      projectId,
     } = requestBody;
 
     const [, session] = await Promise.all([
@@ -425,11 +427,21 @@ export async function POST(request: Request) {
       }
       messagesFromDb = await getMessagesByChatId({ id });
     } else if (message?.role === "user") {
+      if (projectId) {
+        const project = await getProjectById({
+          id: projectId,
+          userId: session.user.id,
+        });
+        if (!project) {
+          return new ChatbotError("not_found:project").toResponse();
+        }
+      }
       await saveChat({
         id,
         userId: session.user.id,
         title: "New chat",
         visibility: "private",
+        projectId: projectId ?? null,
       });
       titlePromise = generateTitleFromUserMessage({ message });
     }

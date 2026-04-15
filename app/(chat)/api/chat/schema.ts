@@ -36,6 +36,7 @@ export const postRequestBodySchema = z.object({
   selectedVisibilityType: z.literal("private"),
   reasoningEnabled: z.boolean().optional(),
   imageMode: z.boolean().optional(),
+  projectId: z.string().uuid().optional(),
 });
 
 export type PostRequestBody = z.infer<typeof postRequestBodySchema>;

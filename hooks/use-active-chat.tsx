@@ -30,6 +30,7 @@ import { fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
 
 type ActiveChatContextValue = {
   chatId: string;
+  chatProjectId: string | null;
   messages: ChatMessage[];
   setMessages: UseChatHelpers<ChatMessage>["setMessages"];
   sendMessage: UseChatHelpers<ChatMessage>["sendMessage"];
@@ -60,6 +61,11 @@ function extractChatId(pathname: string): string | null {
   return match ? match[1] : null;
 }
 
+function extractProjectIdFromNewRoute(pathname: string): string | null {
+  const match = pathname.match(/^\/projects\/([^/]+)\/new$/);
+  return match ? match[1] : null;
+}
+
 export function ActiveChatProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { setDataStream } = useDataStream();
@@ -67,11 +73,14 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
 
   const chatIdFromUrl = extractChatId(pathname);
   const isNewChat = !chatIdFromUrl;
+  const projectIdFromUrl = extractProjectIdFromNewRoute(pathname);
   const newChatIdRef = useRef(generateUUID());
+  const projectIdRef = useRef<string | null>(projectIdFromUrl);
   const prevPathnameRef = useRef(pathname);
 
   if (isNewChat && prevPathnameRef.current !== pathname) {
     newChatIdRef.current = generateUUID();
+    projectIdRef.current = projectIdFromUrl;
   }
   prevPathnameRef.current = pathname;
 
@@ -162,6 +171,9 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
             selectedVisibilityType: "private",
             reasoningEnabled: isReasoningEnabledRef.current,
             imageMode: isImageModeEnabledRef.current,
+            ...(projectIdRef.current
+              ? { projectId: projectIdRef.current }
+              : {}),
             ...request.body,
           },
         };
@@ -260,9 +272,14 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     { revalidateOnFocus: false }
   );
 
+  const chatProjectId: string | null = isNewChat
+    ? projectIdFromUrl
+    : (chatData?.projectId ?? null);
+
   const value = useMemo<ActiveChatContextValue>(
     () => ({
       chatId,
+      chatProjectId,
       messages,
       setMessages,
       sendMessage,
@@ -287,6 +304,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     }),
     [
       chatId,
+      chatProjectId,
       messages,
       setMessages,
       sendMessage,
