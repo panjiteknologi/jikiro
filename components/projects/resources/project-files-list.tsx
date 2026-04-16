@@ -99,6 +99,7 @@ export function ProjectFilesList({ projectId }: { projectId: string }) {
   const listUrl = `${API_BASE}/api/projects/${projectId}/resources/files`;
   const [isDragging, setIsDragging] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<FileAsset | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const { data, isLoading, mutate } = useSWR<FileAsset[]>(listUrl, fetcher, {
@@ -158,7 +159,7 @@ export function ProjectFilesList({ projectId }: { projectId: string }) {
       return;
     }
     const asset = pendingDelete;
-    setPendingDelete(null);
+    setIsDeleting(true);
     try {
       const res = await fetch(`${listUrl}/${asset.id}`, { method: "DELETE" });
       if (!res.ok) {
@@ -166,10 +167,13 @@ export function ProjectFilesList({ projectId }: { projectId: string }) {
       }
       await mutate();
       toast.success("File deleted");
+      setPendingDelete(null);
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Failed to delete file"
       );
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -289,7 +293,7 @@ export function ProjectFilesList({ projectId }: { projectId: string }) {
 
       <AlertDialog
         onOpenChange={(open) => {
-          if (!open) {
+          if (!open && !isDeleting) {
             setPendingDelete(null);
           }
         }}
@@ -304,9 +308,23 @@ export function ProjectFilesList({ projectId }: { projectId: string }) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete}>
-              Delete
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={isDeleting}
+              onClick={(event) => {
+                event.preventDefault();
+                confirmDelete();
+              }}
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2Icon className="size-3.5 animate-spin" />
+                  Deleting
+                </>
+              ) : (
+                "Delete"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
