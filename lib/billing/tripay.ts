@@ -186,7 +186,7 @@ export async function createTripayCheckout(
   const returnUrl =
     config.returnUrl ||
     (config.appBaseUrl
-      ? `${config.appBaseUrl.replace(/\/$/, "")}/billing?checkout=${encodeURIComponent(input.merchantRef)}`
+      ? `${config.appBaseUrl.replace(/\/$/, "")}/billing/checkout/${encodeURIComponent(input.merchantRef)}`
       : null);
 
   const payload = {
@@ -251,4 +251,55 @@ export async function createTripayCheckout(
       return_url?: string | null;
     },
   };
+}
+
+export type TripayTransactionDetail = {
+  amount: number;
+  amount_received: number;
+  checkout_url: string | null;
+  expired_time: number | null;
+  fee_customer: number | null;
+  fee_merchant: number | null;
+  merchant_ref: string;
+  pay_code: string | number | null;
+  pay_url: string | null;
+  payment_method: string | null;
+  payment_name: string | null;
+  reference: string;
+  status: string;
+};
+
+export async function getTripayTransactionDetail(
+  tripayReference: string
+): Promise<TripayTransactionDetail | null> {
+  const config = getTripayConfig();
+
+  if (!config) {
+    return null;
+  }
+
+  const url = new URL(
+    `${getTripayBaseUrl(config.environment)}/transaction/detail`
+  );
+  url.searchParams.set("reference", tripayReference);
+
+  const response = await fetch(url.toString(), {
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    method: "GET",
+  }).catch(() => null);
+
+  if (!response?.ok) {
+    return null;
+  }
+
+  const json = await response.json().catch(() => null);
+
+  if (!json?.success || !json?.data) {
+    return null;
+  }
+
+  return json.data as TripayTransactionDetail;
 }

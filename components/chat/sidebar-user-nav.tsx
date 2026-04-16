@@ -1,10 +1,10 @@
 "use client";
 
-import { ChevronUp, CreditCardIcon } from "lucide-react";
+import { ChevronUp, CreditCardIcon, SparklesIcon } from "lucide-react";
+import Link from "next/link";
 import type { User } from "next-auth";
 import { signOut, useSession } from "next-auth/react";
 import { useTheme } from "next-themes";
-import Link from "next/link";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -29,7 +29,13 @@ function emailToHue(email: string): number {
   return Math.abs(hash) % 360;
 }
 
-export function SidebarUserNav({ user, planName }: { user: User; planName?: string }) {
+export function SidebarUserNav({
+  user,
+  planName,
+}: {
+  user: User;
+  planName?: string;
+}) {
   const { status } = useSession();
   const { setTheme, resolvedTheme } = useTheme();
 
@@ -99,6 +105,12 @@ export function SidebarUserNav({ user, planName }: { user: User; planName?: stri
               {`Toggle ${resolvedTheme === "light" ? "dark" : "light"} mode`}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
+            <DropdownMenuItem asChild data-testid="user-nav-item-plans">
+              <Link className="cursor-pointer text-[13px]" href="/plans">
+                <SparklesIcon className="size-4" />
+                Plans
+              </Link>
+            </DropdownMenuItem>
             <DropdownMenuItem asChild data-testid="user-nav-item-billing">
               <Link className="cursor-pointer text-[13px]" href="/billing">
                 <CreditCardIcon className="size-4" />

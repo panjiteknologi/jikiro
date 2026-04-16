@@ -1,24 +1,31 @@
 "use client";
 
-import { Crown, Sparkles, Zap } from "lucide-react";
-import Link from "next/link";
+import { Crown, Loader2Icon, Sparkles, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { startTransition, useState } from "react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { createTripayCheckout } from "@/app/billing/actions";
+import { downgradeToFree } from "@/app/billing/actions";
 import Pricing, {
   type Plans,
   type PricingBillingPeriod,
 } from "@/components/billing/pricing";
-import type { TripayChannel } from "@/lib/billing/tripay";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type {
   BillingInterval,
   EffectiveEntitlements,
   PlanSlug,
   PlanSnapshot,
 } from "@/lib/billing/types";
-import type { BillingCheckout, Subscription } from "@/lib/db/schema";
 
 type DisplayPlan = {
   description: string;
@@ -35,16 +42,11 @@ type DisplayPlan = {
 };
 
 type BillingDashboardProps = {
-  channels: TripayChannel[];
   currentPlan: PlanSnapshot | null;
   defaultBillingPeriod: PricingBillingPeriod;
   displayPlans: DisplayPlan[];
   isGuest: boolean;
-  recentCheckouts: BillingCheckout[];
   remainingCredits: number | null;
-  showManageModels: boolean;
-  subscription: Subscription | null;
-  tripayConfigured: boolean;
 };
 
 const PLAN_ICONS: Record<PlanSlug, ReactNode> = {
@@ -134,138 +136,84 @@ function getPlanFeatures(plan: DisplayPlan) {
   ];
 }
 
+const PLAN_RANK: Record<PlanSlug, number> = {
+  free: 0,
+  pro: 1,
+  max: 2,
+};
+
 function getCtaLabel({
   currentPlan,
-  hasChannels,
   isGuest,
-  pendingKey,
   plan,
-  tripayConfigured,
 }: {
   currentPlan: PlanSnapshot | null;
-  hasChannels: boolean;
   isGuest: boolean;
-  pendingKey: string | null;
   plan: DisplayPlan;
-  tripayConfigured: boolean;
 }) {
-  if (plan.planSlug === "free") {
-    if (isGuest) {
-      return "Create account";
-    }
-
-    return currentPlan?.planSlug === "free" ? "Current plan" : "Included";
-  }
-
   if (isGuest) {
     return "Create account";
   }
 
-  if (!tripayConfigured || !hasChannels) {
-    return "Checkout unavailable";
+  if (!currentPlan) {
+    return plan.planSlug === "free" ? "Current plan" : "Upgrade";
   }
 
-  return {
-    monthly:
-      pendingKey === `${plan.planSlug}:monthly`
-        ? "Creating checkout..."
-        : currentPlan?.planSlug === plan.planSlug
-          ? "Renew monthly"
-          : "Purchase monthly",
-    yearly:
-      pendingKey === `${plan.planSlug}:yearly`
-        ? "Creating checkout..."
-        : currentPlan?.planSlug === plan.planSlug
-          ? "Renew yearly"
-          : "Purchase yearly",
-  } satisfies Partial<Record<PricingBillingPeriod, string>>;
+  const currentRank = PLAN_RANK[currentPlan.planSlug] ?? 0;
+  const planRank = PLAN_RANK[plan.planSlug] ?? 0;
+
+  if (planRank === currentRank) {
+    return "Current plan";
+  }
+
+  return planRank > currentRank ? "Upgrade" : "Downgrade";
 }
 
 function getCtaDisabled({
-  hasChannels,
+  currentPlan,
   isGuest,
-  pendingKey,
   plan,
-  tripayConfigured,
 }: {
-  hasChannels: boolean;
+  currentPlan: PlanSnapshot | null;
   isGuest: boolean;
-  pendingKey: string | null;
   plan: DisplayPlan;
-  tripayConfigured: boolean;
 }) {
-  if (plan.planSlug === "free") {
-    return !isGuest;
-  }
-
   if (isGuest) {
     return false;
   }
 
-  if (!tripayConfigured || !hasChannels) {
-    return true;
-  }
-
-  return pendingKey !== null;
+  return currentPlan?.planSlug === plan.planSlug;
 }
 
 export function BillingDashboard({
-  channels,
   currentPlan,
   defaultBillingPeriod,
   displayPlans,
   isGuest,
   remainingCredits,
-  showManageModels,
-  tripayConfigured,
 }: BillingDashboardProps) {
   const router = useRouter();
-  const [pendingKey, setPendingKey] = useState<string | null>(null);
-  const selectedMethod = channels[0]?.code ?? "BRIVA";
-  const hasChannels = channels.length > 0;
+  const [showDowngradeDialog, setShowDowngradeDialog] = useState(false);
+  const [isPending, startTransition] = useTransition();
 
-  const handleCheckout = (planSlug: PlanSlug, interval: BillingInterval) => {
-    setPendingKey(`${planSlug}:${interval}`);
-
+  function handleDowngrade() {
     startTransition(async () => {
-      const result = await createTripayCheckout({
-        interval,
-        paymentMethod: selectedMethod,
-        planSlug,
-      });
+      const result = await downgradeToFree();
 
       if (!result.ok) {
         toast.error(result.error);
-        setPendingKey(null);
         return;
       }
 
-      if (!result.checkoutUrl) {
-        toast.error("Tripay did not return a checkout URL.");
-        setPendingKey(null);
-        return;
-      }
-
-      window.location.href = result.checkoutUrl;
+      toast.success("Your plan has been downgraded to Free.");
+      setShowDowngradeDialog(false);
+      router.refresh();
     });
-  };
+  }
 
   const plans: Plans = displayPlans.map((plan) => ({
-    ctaDisabled: getCtaDisabled({
-      hasChannels,
-      isGuest,
-      pendingKey,
-      plan,
-      tripayConfigured,
-    }),
-    ctaLabel: getCtaLabel({
-      currentPlan,
-      hasChannels,
-      isGuest,
-      pendingKey,
-      plan,
-      tripayConfigured,
-    }),
+    ctaDisabled: getCtaDisabled({ currentPlan, isGuest, plan }),
+    ctaLabel: getCtaLabel({ currentPlan, isGuest, plan }),
     description: getPlanDescription({
       currentPlan,
       isGuest,
@@ -280,32 +228,19 @@ export function BillingDashboard({
       : plan.planSlug === "pro",
     name: plan.name,
     onSelect: (billingPeriod) => {
-      if (plan.planSlug === "free") {
-        if (isGuest) {
-          router.push("/register");
-          return;
-        }
-
-        toast.message("Free tier is already included for registered accounts.");
-        return;
-      }
-
       if (isGuest) {
         router.push("/register");
         return;
       }
 
-      if (!tripayConfigured) {
-        toast.error("Tripay is not configured in this environment yet.");
+      if (plan.planSlug === "free") {
+        setShowDowngradeDialog(true);
         return;
       }
 
-      if (!hasChannels) {
-        toast.error("No Tripay payment channels are available right now.");
-        return;
-      }
-
-      handleCheckout(plan.planSlug, billingPeriod);
+      router.push(
+        `/billing/checkout?plan=${plan.planSlug}&interval=${billingPeriod}`
+      );
     },
     price: {
       monthly: plan.offers.monthly.priceIdr,
@@ -316,20 +251,41 @@ export function BillingDashboard({
   }));
 
   return (
-    <Pricing
-      backHref="/"
-      defaultBillingPeriod={defaultBillingPeriod}
-      headerAction={
-        showManageModels ? (
-          <Link
-            className="inline-flex items-center rounded-lg border border-border bg-input/30 px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-input/50"
-            href="/settings/models"
-          >
-            Manage models
-          </Link>
-        ) : null
-      }
-      plans={plans}
-    />
+    <>
+      <Pricing
+        backHref="/billing"
+        defaultBillingPeriod={defaultBillingPeriod}
+        plans={plans}
+      />
+
+      <AlertDialog
+        onOpenChange={setShowDowngradeDialog}
+        open={showDowngradeDialog}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Downgrade to Free?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You will lose access to paid models and your credits will be reset
+              to the Free tier limit (100 credits). This change takes effect
+              immediately.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isPending}
+              onClick={handleDowngrade}
+              variant="destructive"
+            >
+              {isPending ? (
+                <Loader2Icon className="mr-2 size-4 animate-spin" />
+              ) : null}
+              Confirm Downgrade
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

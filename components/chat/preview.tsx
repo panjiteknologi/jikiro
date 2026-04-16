@@ -97,7 +97,7 @@ export function Preview() {
       return "/register";
     }
 
-    const billingHref = `/billing?interval=${billingPeriod}`;
+    const billingHref = `/plans?interval=${billingPeriod}`;
 
     return isLoggedIn
       ? billingHref
