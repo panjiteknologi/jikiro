@@ -65,6 +65,7 @@ import {
   getMessageCountsByUserId,
   getMessagesByChatId,
   getProjectById,
+  getReadableAttachmentsForChat,
   retrieveRelevantAttachmentChunks,
   saveChat,
   saveDocument,
@@ -74,10 +75,7 @@ import {
 } from "@/lib/db/queries";
 import type { DBMessage } from "@/lib/db/schema";
 import { ChatbotError } from "@/lib/errors";
-import {
-  checkIpRateLimit,
-  invalidateUsageCountsCache,
-} from "@/lib/ratelimit";
+import { checkIpRateLimit, invalidateUsageCountsCache } from "@/lib/ratelimit";
 import {
   deleteFilesFromS3BestEffort,
   extractStorageKeyFromFileUrl,
@@ -178,6 +176,7 @@ function resolvePrivateFilePartsForModel({
 async function injectRetrievedDocumentContext({
   billingState,
   chatId,
+  projectId,
   messages,
   originalMessages,
   userId,
@@ -185,6 +184,7 @@ async function injectRetrievedDocumentContext({
 }: {
   billingState: ResolvedBillingState;
   chatId: string;
+  projectId: string | null;
   messages: ChatMessage[];
   originalMessages: ChatMessage[];
   userId: string;
@@ -212,8 +212,9 @@ async function injectRetrievedDocumentContext({
   );
 
   const readyReadableAttachments = (
-    await getAttachmentAssetsByChatId({
+    await getReadableAttachmentsForChat({
       chatId,
+      projectId,
       userId,
     })
   ).filter(
@@ -297,6 +298,7 @@ async function injectRetrievedDocumentContext({
   const retrievedChunks = await retrieveRelevantAttachmentChunks({
     attachmentIds: retrievalAttachmentIds,
     chatId,
+    projectId,
     embedding,
     limit: DOCUMENT_RETRIEVAL_LIMIT,
     userId,
@@ -649,11 +651,13 @@ export async function POST(request: Request) {
       messages: uiMessages,
       userId: session.user.id,
     });
+    const effectiveProjectId = chat?.projectId ?? projectId ?? null;
     const modelReadyMessages = isToolApprovalFlow
       ? resolvedMessages
       : await injectRetrievedDocumentContext({
           billingState,
           chatId: id,
+          projectId: effectiveProjectId,
           messages: resolvedMessages,
           originalMessages: uiMessages,
           userId: session.user.id,
@@ -847,9 +851,7 @@ export async function POST(request: Request) {
                 userId: session.user.id,
                 userType,
               });
-              invalidateUsageCountsCache(session.user.id).catch(
-                () => {}
-              );
+              invalidateUsageCountsCache(session.user.id).catch(() => {});
             } catch (error) {
               console.error("Failed to record chat generation usage", {
                 chatId: id,

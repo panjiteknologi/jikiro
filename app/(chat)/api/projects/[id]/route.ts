@@ -2,6 +2,7 @@ import { z } from "zod";
 import { auth } from "@/app/(auth)/auth";
 import { deleteProject, getProjectById, updateProject } from "@/lib/db/queries";
 import { ChatbotError } from "@/lib/errors";
+import { deleteFilesFromS3BestEffort } from "@/lib/storage/s3";
 
 export async function GET(
   _request: Request,
@@ -87,7 +88,21 @@ export async function DELETE(
     return new ChatbotError("not_found:project").toResponse();
   }
 
-  await deleteProject({ id, userId: session.user.id });
+  const { storageKeysToDelete } = await deleteProject({
+    id,
+    userId: session.user.id,
+  });
+
+  if (storageKeysToDelete.length > 0) {
+    await deleteFilesFromS3BestEffort({
+      keys: storageKeysToDelete,
+      context: {
+        userId: session.user.id,
+        projectId: id,
+        operation: "delete-project",
+      },
+    });
+  }
 
   return new Response(null, { status: 204 });
 }

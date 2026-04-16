@@ -1,3 +1,6 @@
+import mammoth from "mammoth";
+import Papa from "papaparse";
+import { read, utils } from "xlsx";
 import {
   DOCUMENT_CHUNK_OVERLAP,
   DOCUMENT_CHUNK_SIZE,
@@ -6,9 +9,6 @@ import {
   isReadableDocumentMimeType,
   type SupportedReadableDocumentMimeType,
 } from "@/lib/attachments";
-import mammoth from "mammoth";
-import Papa from "papaparse";
-import { read, utils } from "xlsx";
 
 type PdfJsModule = typeof import("pdfjs-dist/legacy/build/pdf.mjs");
 type PdfWorkerModule = typeof import("pdfjs-dist/legacy/build/pdf.worker.mjs");
@@ -30,6 +30,7 @@ export type RetrievedDocumentChunk = {
   attachmentId: string;
   filename: string;
   text: string;
+  origin?: "chat" | "project";
 };
 
 export async function extractReadableDocumentText({
@@ -112,7 +113,8 @@ export function buildRetrievedDocumentContext(
   let context = "";
 
   for (const chunk of chunks) {
-    const section = `File: ${chunk.filename}\n${chunk.text.trim()}`;
+    const label = chunk.origin === "project" ? "Project resource" : "File";
+    const section = `${label}: ${chunk.filename}\n${chunk.text.trim()}`;
 
     if (!section.trim()) {
       continue;
@@ -240,9 +242,7 @@ function extractXlsxText(buffer: Buffer) {
   }
 }
 
-async function createPdfLoadingTask(
-  buffer: Buffer
-): Promise<PdfLoadingTask> {
+async function createPdfLoadingTask(buffer: Buffer): Promise<PdfLoadingTask> {
   const pdfJs = await loadPdfJs();
   const { getDocument, VerbosityLevel } = pdfJs;
 

@@ -93,6 +93,29 @@ export function buildChatUploadKey({
   };
 }
 
+export function getProjectUploadPrefix(userId: string, projectId: string) {
+  return `project-uploads/${userId}/${projectId}/`;
+}
+
+export function buildProjectUploadKey({
+  userId,
+  projectId,
+  fileId,
+  filename,
+}: {
+  userId: string;
+  projectId: string;
+  fileId: string;
+  filename: string;
+}) {
+  const safeName = sanitizeUploadFilename(filename);
+
+  return {
+    key: `${getProjectUploadPrefix(userId, projectId)}${fileId}-${safeName}`,
+    pathname: safeName,
+  };
+}
+
 export function encodeStorageKey(key: string) {
   return Buffer.from(key, "utf8").toString("base64url");
 }

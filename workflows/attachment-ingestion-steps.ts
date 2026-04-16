@@ -7,11 +7,11 @@ import {
   assertAttachmentEmbeddingsDimensions,
   isReadableDocumentMimeType,
 } from "@/lib/attachments";
-import { recordAiUsage } from "@/lib/billing/service";
 import {
   chunkExtractedDocumentText,
   extractReadableDocumentText,
 } from "@/lib/attachments/ingestion";
+import { recordAiUsage } from "@/lib/billing/service";
 import {
   getAttachmentAssetsByIds,
   replaceAttachmentChunks,
@@ -30,7 +30,8 @@ type ExtractedAttachmentResult =
       skipped: true;
     }
   | {
-      chatId: string;
+      chatId: string | null;
+      projectId: string | null;
       skipped: false;
       text: string;
       truncated: boolean;
@@ -55,6 +56,7 @@ export async function runAttachmentAssetIngestion({
     await indexAttachmentTextStep({
       attachmentId,
       chatId: extracted.chatId,
+      projectId: extracted.projectId,
       text: extracted.text,
       truncated: extracted.truncated,
       userId,
@@ -109,6 +111,7 @@ export async function extractAttachmentTextStep({
 
     return {
       chatId: asset.chatId,
+      projectId: asset.projectId,
       skipped: false,
       text: extracted.text,
       truncated: extracted.truncated,
@@ -133,13 +136,15 @@ export async function extractAttachmentTextStep({
 export async function indexAttachmentTextStep({
   attachmentId,
   chatId,
+  projectId,
   text,
   truncated,
   userId,
   userType,
 }: {
   attachmentId: string;
-  chatId: string;
+  chatId: string | null;
+  projectId: string | null;
   text: string;
   truncated: boolean;
   userId: string;
@@ -173,6 +178,7 @@ export async function indexAttachmentTextStep({
   await replaceAttachmentChunks({
     attachmentId,
     chatId,
+    projectId,
     chunks: chunks.map((chunk, index) => ({
       embedding: embeddings[index],
       text: chunk,
