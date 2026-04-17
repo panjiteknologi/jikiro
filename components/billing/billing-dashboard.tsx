@@ -253,8 +253,8 @@ export function BillingDashboard({
   return (
     <>
       <Pricing
-        backHref="/billing"
         defaultBillingPeriod={defaultBillingPeriod}
+        onBack={() => router.back()}
         plans={plans}
       />
 

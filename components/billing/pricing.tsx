@@ -1,7 +1,6 @@
 "use client";
 
 import { ArrowLeftIcon, CheckCircle2Icon, MinusCircleIcon } from "lucide-react";
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 
@@ -33,9 +32,9 @@ export type PricingPlan = {
 export type Plans = PricingPlan[];
 
 type PricingProps = {
-  backHref?: string;
   defaultBillingPeriod?: PricingBillingPeriod;
   headerAction?: ReactNode;
+  onBack?: () => void;
   plans: Plans;
 };
 
@@ -55,9 +54,9 @@ function resolvePeriodValue<T>(
 }
 
 const Pricing = ({
-  backHref,
   defaultBillingPeriod = "yearly",
   headerAction,
+  onBack,
   plans,
 }: PricingProps) => {
   const [billingPeriod, setBillingPeriod] =
@@ -74,14 +73,17 @@ const Pricing = ({
   return (
     <section className="py-8 sm:py-16 lg:py-24">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        {backHref || headerAction ? (
+        {onBack || headerAction ? (
           <div className="mb-6 flex items-center justify-between gap-3">
             <div>
-              {backHref ? (
-                <Button asChild size="icon" variant="ghost">
-                  <Link aria-label="Back to home" href={backHref}>
-                    <ArrowLeftIcon className="size-4" />
-                  </Link>
+              {onBack ? (
+                <Button
+                  aria-label="Go back"
+                  onClick={onBack}
+                  size="icon"
+                  variant="ghost"
+                >
+                  <ArrowLeftIcon className="size-4" />
                 </Button>
               ) : null}
             </div>
