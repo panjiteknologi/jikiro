@@ -2,6 +2,7 @@
 
 import { auth } from "@/app/(auth)/auth";
 import { getPlanSnapshot, isPaidPlan } from "@/lib/billing/plans";
+import { activateSubscriptionFromCheckout } from "@/lib/billing/service";
 import {
   createTripayCheckout as createTripayCheckoutRequest,
   getTripayTransactionDetail,
@@ -20,6 +21,28 @@ import {
 } from "@/lib/db/billing-queries";
 import type { BillingCheckout } from "@/lib/db/schema";
 import { generateUUID } from "@/lib/utils";
+
+async function ensureSubscriptionActivated(checkout: BillingCheckout) {
+  if (checkout.status !== "paid") {
+    return;
+  }
+
+  const subscription = await getSubscriptionByUserId({
+    userId: checkout.userId,
+  });
+
+  // Skip if subscription already reflects this checkout (idempotency)
+  if (subscription?.lastCheckoutId === checkout.id) {
+    return;
+  }
+
+  await activateSubscriptionFromCheckout({
+    checkoutId: checkout.id,
+    interval: checkout.interval,
+    planSlug: checkout.planSlug,
+    userId: checkout.userId,
+  });
+}
 
 export async function createTripayCheckout({
   interval,
@@ -166,11 +189,13 @@ export async function refreshCheckoutStatus({
     return { ok: false, error: "Checkout not found." };
   }
 
-  if (
-    checkout.status === "paid" ||
-    checkout.status === "expired" ||
-    checkout.status === "failed"
-  ) {
+  // Already paid — make sure subscription is activated (catches webhook failures)
+  if (checkout.status === "paid") {
+    await ensureSubscriptionActivated(checkout);
+    return { ok: true, checkout };
+  }
+
+  if (checkout.status === "expired" || checkout.status === "failed") {
     return { ok: true, checkout };
   }
 
@@ -199,6 +224,10 @@ export async function refreshCheckoutStatus({
     });
 
     if (updated) {
+      // Polling-based fallback: activate subscription if we just detected payment
+      if (newStatus === "paid") {
+        await ensureSubscriptionActivated(updated);
+      }
       return { ok: true, checkout: updated };
     }
   }
